@@ -1,0 +1,27 @@
+package com.example.photocad
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.*
+import com.example.photocad.data.AppDatabase
+import com.example.photocad.ui.DrawingListScreen
+import com.example.photocad.ui.DrawingScreen
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val db = AppDatabase.getInstance(this) // создание бд при старте
+        setContent {
+            MaterialTheme {
+                var selectedDrawingId by remember { mutableStateOf<Long?>(null) }
+                if (selectedDrawingId == null) {
+                    DrawingListScreen(db = db, onOpenDrawing = { selectedDrawingId = it })
+                } else {
+                    DrawingScreen(db = db, drawingId = selectedDrawingId!!, onBack = { selectedDrawingId = null })
+                }
+            }
+        }
+    }
+}
