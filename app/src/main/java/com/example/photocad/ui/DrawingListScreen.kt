@@ -16,24 +16,32 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.example.photocad.data.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun DrawingListScreen(db: AppDatabase, onOpenDrawing: (Long) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var importError by remember { mutableStateOf<String?>(null) }
     val drawings by db.drawingDao().getAll().collectAsState(initial = emptyList())
 
     // считывает все чертежи
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             scope.launch {
-                val path = copyUriToAppStorage(context, it) // копирование в хранилище
-                db.drawingDao().insert(Drawing(name = "Чертёж ${drawings.size + 1}", filePath = path))
-                // сохранение как Drawing
+                try {
+                    val path = copyUriToAppStorage(context, it)
+                    db.drawingDao().insert(Drawing(name = "Чертёж ${drawings.size + 1}", filePath = path))
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { importError = "Не удалось добавить чертёж: ${failure.message}" }
             }
         }
     }
 
+    importError?.let { message ->
+        AlertDialog(onDismissRequest = { importError = null }, text = { Text(message) },
+            confirmButton = { TextButton(onClick = { importError = null }) { Text("Закрыть") } })
+    }
     // кнопка добавления чертежа
     Scaffold(
         floatingActionButton = {
