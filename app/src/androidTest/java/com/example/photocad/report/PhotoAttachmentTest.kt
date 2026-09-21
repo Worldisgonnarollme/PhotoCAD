@@ -23,7 +23,7 @@ class PhotoAttachmentTest {
         bitmap.recycle()
         try {
             val pointId = runBlocking {
-                val drawingId = db.drawingDao().insert(Drawing(name = "Чертёж", filePath = file.path))
+                val drawingId = db.drawingDao().insert(Drawing(name = "Чертёж", filePath = file.path, siteId = 1))
                 db.pointDao().insert(Point(drawingId = drawingId, x = 0f, y = 0f, comment = "Копия"))
             }
             lateinit var model: PointPhotosViewModel

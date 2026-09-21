@@ -20,7 +20,7 @@ class ReportEditingTest {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val ids = runBlocking {
-                val drawing = db.drawingDao().insert(Drawing(name = "Проверка", filePath = "drawing"))
+                val drawing = db.drawingDao().insert(Drawing(name = "Проверка", filePath = "drawing", siteId = 1))
                 val point = db.pointDao().insert(Point(drawingId = drawing, x = 0f, y = 0f, comment = "Исходное"))
                 db.insertPhotoWithComment(point, "missing-thumbnail-is-allowed-in-editor")
                 drawing to point

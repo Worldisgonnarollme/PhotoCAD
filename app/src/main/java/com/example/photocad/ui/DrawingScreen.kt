@@ -9,6 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -28,6 +31,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -37,8 +41,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.example.photocad.data.*
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+// красный/синий/зелёный/оранжевый/фиолетовый/серый; индекс 0 — цвет по умолчанию для старых точек
+val pointColors = listOf(
+    Color(0xFFF44336), Color(0xFF2196F3), Color(0xFF4CAF50),
+    Color(0xFFFF9800), Color(0xFF9C27B0), Color(0xFF9E9E9E)
+)
 
 // экран одного чертежа
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,7 +58,7 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
 
     var drawing by remember { mutableStateOf<Drawing?>(null) }
     LaunchedEffect(drawingId) {
-        drawing = db.drawingDao().getAll().first().find { it.id == drawingId }
+        drawing = db.drawingDao().getById(drawingId)
     }
     val points by db.pointDao().getByDrawing(drawingId).collectAsState(initial = emptyList())
     var selectedPointId by rememberSaveable(drawingId) { mutableStateOf<Long?>(null) }
@@ -88,14 +97,39 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                 Image(bitmap = bmp, contentDescription = null, modifier = Modifier.fillMaxSize())
                 points.forEach { p ->
                     val density = LocalDensity.current
+                    var dragOffsetPx by remember(p.id) { mutableStateOf<Offset?>(null) }
+                    val currentPx = dragOffsetPx ?: Offset(p.x * boxSize.width, p.y * boxSize.height)
                     Box(
                         Modifier
                             .offset(
-                                x = with(density) { (p.x * boxSize.width).toDp() } - 8.dp,
-                                y = with(density) { (p.y * boxSize.height).toDp() } - 8.dp
+                                x = with(density) { currentPx.x.toDp() } - 8.dp,
+                                y = with(density) { currentPx.y.toDp() } - 8.dp
                             )
                             .size(16.dp)
-                            .background(Color.Red, CircleShape)
+                            .background(pointColors[p.colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
+                            .pointerInput(p.id, boxSize) {
+                                detectDragGestures(
+                                    onDragStart = { dragOffsetPx = Offset(p.x * boxSize.width, p.y * boxSize.height) },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val base = dragOffsetPx ?: Offset(p.x * boxSize.width, p.y * boxSize.height)
+                                        dragOffsetPx = Offset(
+                                            (base.x + dragAmount.x).coerceIn(0f, boxSize.width.toFloat()),
+                                            (base.y + dragAmount.y).coerceIn(0f, boxSize.height.toFloat())
+                                        )
+                                    },
+                                    onDragEnd = {
+                                        val final = dragOffsetPx
+                                        dragOffsetPx = null
+                                        if (final != null && boxSize.width > 0 && boxSize.height > 0) {
+                                            val fx = (final.x / boxSize.width).coerceIn(0f, 1f)
+                                            val fy = (final.y / boxSize.height).coerceIn(0f, 1f)
+                                            scope.launch { db.pointDao().updatePosition(p.id, fx, fy) }
+                                        }
+                                    },
+                                    onDragCancel = { dragOffsetPx = null }
+                                )
+                            }
                     )
                 }
             }
@@ -122,6 +156,7 @@ private fun PhotoDialog(db: AppDatabase, point: Point, onDismiss: () -> Unit) {
     var launchingCamera by remember { mutableStateOf(false) }
     val busy = launchingCamera || attachmentState.busy
     var pendingCameraPath by rememberSaveable(point.id) { mutableStateOf<String?>(null) }
+    var confirmingDelete by remember { mutableStateOf(false) }
     LaunchedEffect(attachmentState.completedCameraPath) {
         if (pendingCameraPath == attachmentState.completedCameraPath) pendingCameraPath = null
     }
@@ -143,6 +178,24 @@ private fun PhotoDialog(db: AppDatabase, point: Point, onDismiss: () -> Unit) {
                     Text("Сохранить комментарий точки")
                 }
                 Text("Новые фото получают сохранённый комментарий точки.")
+                Spacer(Modifier.height(8.dp))
+                Text("Цвет точки")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pointColors.forEachIndexed { index, color ->
+                        Box(
+                            Modifier
+                                .size(28.dp)
+                                .background(color, CircleShape)
+                                .border(
+                                    width = if (index == point.colorIndex) 3.dp else 0.dp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    shape = CircleShape
+                                )
+                                .clickable(enabled = !busy) { model.saveColor(index) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 Row {
                     Button(enabled = !busy && pendingCameraPath == null, onClick = {
                         try { pickImage.launch("image/*") }
@@ -183,8 +236,22 @@ private fun PhotoDialog(db: AppDatabase, point: Point, onDismiss: () -> Unit) {
                         }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    enabled = !busy && pendingCameraPath == null,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    onClick = { confirmingDelete = true }
+                ) { Text("Удалить точку") }
             }
         },
         confirmButton = { TextButton(enabled = !busy && pendingCameraPath == null, onClick = onDismiss) { Text("Готово") } }
     )
+
+    if (confirmingDelete) {
+        ConfirmDialog(
+            text = "Удалить точку и все её фото? Это необратимо.",
+            onConfirm = { scope.launch { db.deletePoint(point.id) }; confirmingDelete = false; onDismiss() },
+            onDismiss = { confirmingDelete = false }
+        )
+    }
 }

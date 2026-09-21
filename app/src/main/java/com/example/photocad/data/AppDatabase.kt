@@ -5,10 +5,23 @@ import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+interface SiteDao {
+    @Insert suspend fun insert(site: Site): Long
+    @Query("SELECT * FROM sites") fun getAll(): Flow<List<Site>>
+    @Query("SELECT * FROM sites WHERE id = :id") suspend fun getById(id: Long): Site?
+    @Query("UPDATE sites SET name = :name, address = :address, description = :description WHERE id = :id")
+    suspend fun update(id: Long, name: String, address: String, description: String): Int
+    @Query("DELETE FROM sites WHERE id = :id") suspend fun delete(id: Long)
+}
+
+@Dao
 interface DrawingDao {
     @Insert suspend fun insert(drawing: Drawing): Long
-    @Query("SELECT * FROM drawings") fun getAll(): Flow<List<Drawing>>
+    @Query("SELECT * FROM drawings WHERE siteId = :siteId") fun getBySite(siteId: Long): Flow<List<Drawing>>
     @Query("SELECT * FROM drawings WHERE id = :id") suspend fun getById(id: Long): Drawing?
+    @Query("UPDATE drawings SET name = :name, description = :description WHERE id = :id")
+    suspend fun update(id: Long, name: String, description: String): Int
+    @Query("DELETE FROM drawings WHERE id = :id") suspend fun delete(id: Long)
 }
 
 @Dao
@@ -18,6 +31,12 @@ interface PointDao {
     @Query("SELECT * FROM points WHERE id = :id") suspend fun getById(id: Long): Point?
     @Query("UPDATE points SET comment = :comment WHERE id = :id")
     suspend fun updateComment(id: Long, comment: String): Int
+    @Query("UPDATE points SET x = :x, y = :y WHERE id = :id")
+    suspend fun updatePosition(id: Long, x: Float, y: Float): Int
+    @Query("UPDATE points SET colorIndex = :colorIndex WHERE id = :id")
+    suspend fun updateColor(id: Long, colorIndex: Int): Int
+    @Query("DELETE FROM points WHERE id = :id") suspend fun delete(id: Long)
+    @Query("DELETE FROM points WHERE drawingId = :drawingId") suspend fun deleteByDrawing(drawingId: Long)
 }
 
 data class ReportPhotoRow(
@@ -34,6 +53,7 @@ interface PhotoDao {
     @Query("SELECT * FROM photos WHERE pointId = :pointId") fun getByPoint(pointId: Long): Flow<List<Photo>>
     @Query("UPDATE photos SET description = :description WHERE id = :id")
     suspend fun updateDescription(id: Long, description: String): Int
+    @Query("DELETE FROM photos WHERE pointId = :pointId") suspend fun deleteByPoint(pointId: Long)
     @Query("""
         SELECT photos.id AS photoId, photos.pointId, photos.filePath,
                photos.description, points.comment AS pointComment
@@ -44,8 +64,9 @@ interface PhotoDao {
     suspend fun getReportRows(drawingId: Long): List<ReportPhotoRow>
 }
 
-@Database(entities = [Drawing::class, Point::class, Photo::class], version = 2, exportSchema = true)
+@Database(entities = [Site::class, Drawing::class, Point::class, Photo::class], version = 5, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun siteDao(): SiteDao
     abstract fun drawingDao(): DrawingDao
     abstract fun pointDao(): PointDao
     abstract fun photoDao(): PhotoDao
@@ -55,7 +76,10 @@ abstract class AppDatabase : RoomDatabase() {
         fun getInstance(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "photocad.db")
-                    .addMigrations(DatabaseMigrations.MIGRATION_1_2)
+                    .addMigrations(
+                        DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3,
+                        DatabaseMigrations.MIGRATION_3_4, DatabaseMigrations.MIGRATION_4_5
+                    )
                     .build().also { INSTANCE = it }
             }
     }

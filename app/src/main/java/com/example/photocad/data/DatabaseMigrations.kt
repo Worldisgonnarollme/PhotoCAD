@@ -12,4 +12,26 @@ object DatabaseMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS index_photos_pointId ON photos(pointId)")
         }
     }
+
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE drawings ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+    /** Existing drawings didn't belong to any object; group them under one default site so nothing is lost. */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS sites (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, address TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '')")
+            db.execSQL("INSERT INTO sites (id, name, address, description) VALUES (1, 'Мои чертежи', '', '')")
+            db.execSQL("ALTER TABLE drawings ADD COLUMN siteId INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_drawings_siteId ON drawings(siteId)")
+        }
+    }
+
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE points ADD COLUMN colorIndex INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }

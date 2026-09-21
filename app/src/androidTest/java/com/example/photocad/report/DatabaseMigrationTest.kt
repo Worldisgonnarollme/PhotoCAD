@@ -33,17 +33,21 @@ class DatabaseMigrationTest {
                 old.version = 1
             }
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(DatabaseMigrations.MIGRATION_1_2).build()
+                .addMigrations(DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3, DatabaseMigrations.MIGRATION_3_4, DatabaseMigrations.MIGRATION_4_5).build()
             try {
                 val point = db.pointDao().getById(10)!! // opening invokes migration + generated Room schema validation
                 assertEquals("", point.comment)
                 assertEquals(0.25f, point.x)
                 assertEquals(0.75f, point.y)
+                assertEquals(0, point.colorIndex)
                 val oldPhoto = db.photoDao().getByPoint(10).first().single()
                 assertEquals(100L, oldPhoto.id)
                 assertEquals(photoFile.path, oldPhoto.filePath)
                 assertNull(oldPhoto.description)
-                assertNotNull(db.drawingDao().getById(1))
+                val migratedDrawing = db.drawingDao().getById(1)!!
+                assertEquals("", migratedDrawing.description)
+                assertEquals(1L, migratedDrawing.siteId)
+                assertEquals("Мои чертежи", db.siteDao().getById(1)!!.name)
                 val decoded = BitmapFactory.decodeFile(oldPhoto.filePath)
                 assertNotNull(decoded)
                 decoded?.recycle()
@@ -58,7 +62,7 @@ class DatabaseMigrationTest {
                 db.photoDao().updateDescription(100, "Явно сохранено")
             } finally { db.close() }
             val reopened = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(DatabaseMigrations.MIGRATION_1_2).build()
+                .addMigrations(DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3, DatabaseMigrations.MIGRATION_3_4, DatabaseMigrations.MIGRATION_4_5).build()
             try { assertEquals("Явно сохранено", reopened.photoDao().getByPoint(10).first().first { it.id == 100L }.description) }
             finally { reopened.close() }
         } finally { context.deleteDatabase(name); photoFile.delete() }
@@ -67,8 +71,8 @@ class DatabaseMigrationTest {
     @Test fun freshDatabaseFiltersByDrawing() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
-            val one = db.drawingDao().insert(Drawing(name = "Один", filePath = "one"))
-            val two = db.drawingDao().insert(Drawing(name = "Два", filePath = "two"))
+            val one = db.drawingDao().insert(Drawing(name = "Один", filePath = "one", siteId = 1))
+            val two = db.drawingDao().insert(Drawing(name = "Два", filePath = "two", siteId = 1))
             val p1 = db.pointDao().insert(Point(drawingId = one, x = 0f, y = 0f, comment = "Первый"))
             val p2 = db.pointDao().insert(Point(drawingId = two, x = 0f, y = 0f))
             db.insertPhotoWithComment(p2, "other")

@@ -33,6 +33,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -67,4 +68,6 @@ dependencies {
     ksp("androidx.room:room-compiler:2.8.5")
 
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
+
+    implementation(libs.androidx.datastore.preferences)
 }

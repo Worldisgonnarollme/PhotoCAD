@@ -64,6 +64,10 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
         if (db.pointDao().updateComment(pointId, comment) != 1) error("Точка недоступна")
     }
 
+    fun saveColor(colorIndex: Int) = perform("Цвет точки изменён") {
+        if (db.pointDao().updateColor(pointId, colorIndex) != 1) error("Точка недоступна")
+    }
+
     fun saveDescription(photoId: Long, description: String) = perform("Описание фотографии сохранено") {
         if (db.photoDao().updateDescription(photoId, description) != 1) error("Фотография недоступна")
     }
