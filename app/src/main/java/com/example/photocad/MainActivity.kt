@@ -14,7 +14,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.example.photocad.ui.report.ReportScreen
 import com.example.photocad.data.AppDatabase
@@ -24,32 +23,26 @@ import com.example.photocad.ui.SiteListScreen
 import com.example.photocad.ui.profile.ProfileScreen
 import com.example.photocad.ui.profile.ProfileViewModel
 import com.example.photocad.ui.profile.RegistrationScreen
-import com.example.photocad.ui.profile.WelcomeScreen
+import com.example.photocad.ui.settings.SettingsScreen
+import com.example.photocad.ui.theme.PhotoCADTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val db = AppDatabase.getInstance(this) // создание бд при старте
         setContent {
-            MaterialTheme {
+            PhotoCADTheme {
                 val profileViewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory(application))
                 val profileUi by profileViewModel.state.collectAsState()
 
                 when {
                     profileUi.loading -> Box(Modifier.fillMaxSize())
-                    profileUi.profile == null -> {
-                        var showRegistrationForm by rememberSaveable { mutableStateOf(false) }
-                        if (showRegistrationForm) {
-                            RegistrationScreen(
-                                busy = profileUi.busy,
-                                message = profileUi.message,
-                                onDismissMessage = { profileViewModel.dismissMessage() },
-                                onSubmit = { fullName, avatarPath -> profileViewModel.register(fullName, avatarPath) }
-                            )
-                        } else {
-                            WelcomeScreen(onRegisterClick = { showRegistrationForm = true })
-                        }
-                    }
+                    profileUi.profile == null -> RegistrationScreen(
+                        busy = profileUi.busy,
+                        message = profileUi.message,
+                        onDismissMessage = { profileViewModel.dismissMessage() },
+                        onSubmit = { fullName, avatarPath -> profileViewModel.register(fullName, avatarPath) }
+                    )
                     else -> MainApp(db = db, profileViewModel = profileViewModel)
                 }
             }
@@ -70,19 +63,40 @@ private fun MainApp(db: AppDatabase, profileViewModel: ProfileViewModel) {
                     selected = selectedTab == MainTab.OBJECTS,
                     onClick = { selectedTab = MainTab.OBJECTS },
                     icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                    label = { Text(MainTab.OBJECTS.label) }
+                    label = { Text(MainTab.OBJECTS.label) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 )
                 NavigationBarItem(
                     selected = selectedTab == MainTab.PROFILE,
                     onClick = { selectedTab = MainTab.PROFILE },
                     icon = { Icon(Icons.Default.AccountCircle, contentDescription = null) },
-                    label = { Text(MainTab.PROFILE.label) }
+                    label = { Text(MainTab.PROFILE.label) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 )
                 NavigationBarItem(
                     selected = selectedTab == MainTab.SETTINGS,
                     onClick = { selectedTab = MainTab.SETTINGS },
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text(MainTab.SETTINGS.label) }
+                    label = { Text(MainTab.SETTINGS.label) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 )
             }
         }
@@ -94,18 +108,18 @@ private fun MainApp(db: AppDatabase, profileViewModel: ProfileViewModel) {
                     val profileUi by profileViewModel.state.collectAsState()
                     profileUi.profile?.let { profile ->
                         ProfileScreen(
+                            db = db,
                             profile = profile,
                             busy = profileUi.busy,
                             message = profileUi.message,
                             onDismissMessage = { profileViewModel.dismissMessage() },
                             onUpdateFullName = { profileViewModel.updateFullName(it) },
-                            onUpdateAvatarPath = { profileViewModel.updateAvatarPath(it) }
+                            onUpdateAvatarPath = { profileViewModel.updateAvatarPath(it) },
+                            onLogout = { profileViewModel.logout() }
                         )
                     }
                 }
-                MainTab.SETTINGS -> Box(Modifier.fillMaxSize()) {
-                    Text("Скоро", modifier = Modifier.align(Alignment.Center))
-                }
+                MainTab.SETTINGS -> SettingsScreen()
             }
         }
     }

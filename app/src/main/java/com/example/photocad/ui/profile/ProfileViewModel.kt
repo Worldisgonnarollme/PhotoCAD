@@ -60,6 +60,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         UserPreferences.updateAvatarPath(getApplication(), avatarPath)
     }
 
+    fun logout() = perform {
+        UserPreferences.clearProfile(getApplication())
+    }
+
     fun dismissMessage() = mutable.update { it.copy(message = null) }
 
     class Factory(private val application: Application) : ViewModelProvider.Factory {

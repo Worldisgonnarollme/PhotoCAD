@@ -4,6 +4,16 @@ import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+data class SiteSummary(
+    val id: Long,
+    val name: String,
+    val address: String,
+    val description: String,
+    val blueprintCount: Int,
+    val pointCount: Int,
+    val thumbnailPath: String?
+)
+
 @Dao
 interface SiteDao {
     @Insert suspend fun insert(site: Site): Long
@@ -12,7 +22,28 @@ interface SiteDao {
     @Query("UPDATE sites SET name = :name, address = :address, description = :description WHERE id = :id")
     suspend fun update(id: Long, name: String, address: String, description: String): Int
     @Query("DELETE FROM sites WHERE id = :id") suspend fun delete(id: Long)
+    @Query("SELECT COUNT(*) FROM sites") fun siteCount(): Flow<Int>
+    @Query(
+        """
+        SELECT sites.id AS id, sites.name AS name, sites.address AS address, sites.description AS description,
+               (SELECT COUNT(*) FROM drawings WHERE drawings.siteId = sites.id) AS blueprintCount,
+               (SELECT COUNT(*) FROM points INNER JOIN drawings ON points.drawingId = drawings.id WHERE drawings.siteId = sites.id) AS pointCount,
+               (SELECT filePath FROM drawings WHERE drawings.siteId = sites.id ORDER BY drawings.id ASC LIMIT 1) AS thumbnailPath
+        FROM sites
+        ORDER BY sites.id DESC
+        """
+    )
+    fun getAllSummaries(): Flow<List<SiteSummary>>
 }
+
+data class DrawingSummary(
+    val id: Long,
+    val name: String,
+    val filePath: String,
+    val siteId: Long,
+    val description: String,
+    val pointCount: Int
+)
 
 @Dao
 interface DrawingDao {
@@ -22,6 +53,14 @@ interface DrawingDao {
     @Query("UPDATE drawings SET name = :name, description = :description WHERE id = :id")
     suspend fun update(id: Long, name: String, description: String): Int
     @Query("DELETE FROM drawings WHERE id = :id") suspend fun delete(id: Long)
+    @Query("SELECT COUNT(*) FROM drawings") fun drawingCount(): Flow<Int>
+    @Query(
+        """
+        SELECT drawings.*, (SELECT COUNT(*) FROM points WHERE points.drawingId = drawings.id) AS pointCount
+        FROM drawings WHERE siteId = :siteId
+        """
+    )
+    fun getBySiteWithPointCount(siteId: Long): Flow<List<DrawingSummary>>
 }
 
 @Dao
@@ -37,6 +76,7 @@ interface PointDao {
     suspend fun updateColor(id: Long, colorIndex: Int): Int
     @Query("DELETE FROM points WHERE id = :id") suspend fun delete(id: Long)
     @Query("DELETE FROM points WHERE drawingId = :drawingId") suspend fun deleteByDrawing(drawingId: Long)
+    @Query("SELECT COUNT(*) FROM points") fun pointCount(): Flow<Int>
 }
 
 data class ReportPhotoRow(

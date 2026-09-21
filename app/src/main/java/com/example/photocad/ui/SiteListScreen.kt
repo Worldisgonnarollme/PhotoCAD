@@ -2,136 +2,86 @@
 
 package com.example.photocad.ui
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.photocad.data.*
-import kotlinx.coroutines.launch
+import com.example.photocad.ui.components.DashedAddCard
+import com.example.photocad.ui.components.ObjectCard
 
 @Composable
 fun SiteListScreen(db: AppDatabase, onOpenSite: (Long) -> Unit) {
-    val scope = rememberCoroutineScope()
     var creating by remember { mutableStateOf(false) }
     var editingSite by remember { mutableStateOf<Site?>(null) }
-    val sites by db.siteDao().getAll().collectAsState(initial = emptyList())
+    val summaries by db.siteDao().getAllSummaries().collectAsState(initial = emptyList())
 
-    if (creating) {
-        SiteDetailsDialog(
-            title = "Новый объект",
-            initialName = "",
-            initialAddress = "",
-            initialDescription = "",
-            confirmLabel = "Создать",
-            onDismiss = { creating = false },
-            onConfirm = { name, address, description ->
-                scope.launch { db.siteDao().insert(Site(name = name, address = address, description = description)) }
-                creating = false
-            },
-            onDelete = null
+    when {
+        creating -> CreateObjectScreen(db = db, editing = null, onBack = { creating = false }, onSaved = { creating = false })
+        editingSite != null -> CreateObjectScreen(
+            db = db, editing = editingSite,
+            onBack = { editingSite = null },
+            onSaved = { editingSite = null }
         )
-    }
-
-    editingSite?.let { site ->
-        SiteDetailsDialog(
-            title = "Изменить объект",
-            initialName = site.name,
-            initialAddress = site.address,
-            initialDescription = site.description,
-            confirmLabel = "Сохранить",
-            onDismiss = { editingSite = null },
-            onConfirm = { name, address, description ->
-                scope.launch { db.siteDao().update(site.id, name, address, description) }
-                editingSite = null
-            },
-            onDelete = {
-                scope.launch { db.deleteSite(site.id) }
-                editingSite = null
-            }
-        )
-    }
-
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(onClick = { creating = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Добавить объект")
-            }
-        }
-    ) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize()) {
-            items(sites) { site ->
-                ListItem(
-                    headlineContent = { Text(site.name) },
-                    trailingContent = {
-                        IconButton(onClick = { editingSite = site }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Изменить объект")
+        else -> Column(Modifier.fillMaxSize()) {
+            Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(32.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(16.dp))
                         }
-                    },
-                    modifier = Modifier.clickable { onOpenSite(site.id) }
-                )
-                HorizontalDivider()
-            }
-        }
-    }
-}
-
-@Composable
-private fun SiteDetailsDialog(
-    title: String,
-    initialName: String,
-    initialAddress: String,
-    initialDescription: String,
-    confirmLabel: String,
-    onDismiss: () -> Unit,
-    onConfirm: (name: String, address: String, description: String) -> Unit,
-    onDelete: (() -> Unit)?
-) {
-    var name by rememberSaveable { mutableStateOf(initialName) }
-    var address by rememberSaveable { mutableStateOf(initialAddress) }
-    var description by rememberSaveable { mutableStateOf(initialDescription) }
-    var confirmingDelete by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Название") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Адрес (опционально)") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Описание (опционально)") },
-                    minLines = 2, modifier = Modifier.fillMaxWidth())
-                if (onDelete != null) {
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        onClick = { confirmingDelete = true }
-                    ) { Text("Удалить объект") }
+                        Text("PhotoCAD", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
+                    }
+                    IconButton(
+                        onClick = { creating = true },
+                        modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Добавить объект", tint = MaterialTheme.colorScheme.onPrimary)
+                    }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim(), address.trim(), description.trim()) }) { Text(confirmLabel) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
-    )
 
-    if (confirmingDelete && onDelete != null) {
-        ConfirmDialog(
-            text = "Удалить объект со всеми чертежами, точками и фото? Это необратимо.",
-            onConfirm = { confirmingDelete = false; onDelete() },
-            onDismiss = { confirmingDelete = false }
-        )
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text("Мои объекты", style = MaterialTheme.typography.titleMedium)
+                Text("${summaries.size} объекта", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            LazyColumn(
+                Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(summaries, key = { it.id }) { summary ->
+                    ObjectCard(
+                        summary = summary,
+                        onClick = { onOpenSite(summary.id) },
+                        onEdit = {
+                            editingSite = Site(summary.id, summary.name, summary.address, summary.description)
+                        }
+                    )
+                }
+                item {
+                    DashedAddCard(label = "Добавить объект", onClick = { creating = true })
+                }
+            }
+        }
     }
 }

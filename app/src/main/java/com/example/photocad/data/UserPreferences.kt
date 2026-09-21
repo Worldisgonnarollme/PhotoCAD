@@ -36,4 +36,8 @@ object UserPreferences {
     suspend fun updateAvatarPath(context: Context, avatarPath: String) {
         context.userDataStore.edit { prefs -> prefs[AVATAR_PATH] = avatarPath }
     }
+
+    suspend fun clearProfile(context: Context) {
+        context.userDataStore.edit { prefs -> prefs.clear() }
+    }
 }
