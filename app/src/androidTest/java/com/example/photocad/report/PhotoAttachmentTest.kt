@@ -26,7 +26,7 @@ class PhotoAttachmentTest {
         try {
             val pointId = runBlocking {
                 val drawingId = db.drawingDao().insert(Drawing(name = "Чертёж", filePath = file.path, siteId = 1))
-                db.pointDao().insert(Point(drawingId = drawingId, x = 0f, y = 0f, comment = "Копия"))
+                db.pointDao().insert(Point(drawingId = drawingId, x = 0.25f, y = 0.75f, pageNumber = 2, comment = "Копия"))
             }
             lateinit var model: PointPhotosViewModel
             instrumentation.runOnMainSync {
@@ -38,6 +38,13 @@ class PhotoAttachmentTest {
             val photo = runBlocking { db.photoDao().getByPoint(pointId).first().single() }
             assertEquals(file.path, photo.filePath)
             assertEquals("Копия", photo.description)
+            val reportRow = runBlocking {
+                val drawingId = db.pointDao().getById(pointId)!!.drawingId
+                db.photoDao().getReportRows(drawingId).single()
+            }
+            assertEquals(2, reportRow.pageNumber)
+            assertEquals(0.25f, reportRow.x, 0f)
+            assertEquals(0.75f, reportRow.y, 0f)
             runBlocking { db.pointDao().updateComment(pointId, "Изменённый комментарий") }
             assertEquals("Копия", runBlocking { db.photoDao().getByPoint(pointId).first().single().description })
             instrumentation.runOnMainSync { model.cameraResult(file.path, true) }

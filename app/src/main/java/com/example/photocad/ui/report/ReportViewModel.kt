@@ -55,7 +55,8 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
                 }
                 updateSession(session) { it.copy(initialized = true, loading = false, drawingName = drawing.name,
                     photos = reportPointOrdinals(rows.map { row -> DraftPhoto(row.photoId, row.pointId, row.filePath,
-                        ReportRules.description(row.description, row.pointComment), drawingPage = row.pageNumber) })) }
+                        ReportRules.description(row.description, row.pointComment), drawingPage = row.pageNumber,
+                        drawingPath = drawing.filePath, drawingName = drawing.name, pointX = row.x, pointY = row.y) })) }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { updateSession(session) { it.copy(loading = false, message = failure.message ?: "Не удалось загрузить фотографии") } }
         }

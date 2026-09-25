@@ -86,6 +86,8 @@ data class ReportPhotoRow(
     val photoId: Long,
     val pointId: Long,
     val pageNumber: Int,
+    val x: Float,
+    val y: Float,
     val filePath: String,
     val description: String?,
     val pointComment: String
@@ -100,7 +102,7 @@ interface PhotoDao {
     @Query("DELETE FROM photos WHERE pointId = :pointId") suspend fun deleteByPoint(pointId: Long)
     @Query("SELECT COUNT(*) FROM photos WHERE filePath = :path") suspend fun countByFilePath(path: String): Int
     @Query("""
-        SELECT photos.id AS photoId, photos.pointId, points.pageNumber, photos.filePath,
+        SELECT photos.id AS photoId, photos.pointId, points.pageNumber, points.x, points.y, photos.filePath,
                photos.description, points.comment AS pointComment
         FROM photos INNER JOIN points ON photos.pointId = points.id
         WHERE points.drawingId = :drawingId

@@ -12,11 +12,18 @@ public final class ReportRules {
     }
     public static String caption(int number, String description) {
         if (number < 1) throw new IllegalArgumentException("Invalid photo number");
-        return "Фотография №" + number;
+        String text = "Фотография №" + number;
+        return description == null || description.trim().isEmpty() ? text : text + " — " + description.trim();
     }
     public static String caption(int number, int pointNumber, int drawingPage, String description) {
         if (number < 1 || pointNumber < 1 || drawingPage < 1) throw new IllegalArgumentException("Invalid report numbering");
         String metadata = "Фотография №" + number + " • Точка №" + pointNumber + " • Страница " + drawingPage;
+        return description == null || description.trim().isEmpty() ? metadata : metadata + " — " + description.trim();
+    }
+    public static String caption(int number, String drawingName, int drawingPage, int pointNumber, String description) {
+        if (number < 1 || drawingPage < 1 || pointNumber < 1) throw new IllegalArgumentException("Invalid report numbering");
+        String name = drawingName == null || drawingName.trim().isEmpty() ? "Чертёж" : drawingName.trim();
+        String metadata = "Фото №" + number + " • " + name + " • Страница " + drawingPage + " • Точка №" + pointNumber;
         return description == null || description.trim().isEmpty() ? metadata : metadata + " — " + description.trim();
     }
     public static float fitScale(int width, int height, float availableWidth, float availableHeight) {

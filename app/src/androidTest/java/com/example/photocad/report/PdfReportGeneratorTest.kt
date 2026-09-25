@@ -41,10 +41,11 @@ class PdfReportGeneratorTest {
     }
     @Test fun longCaptionFitsWithoutEllipsis() {
         val description = "Подготовка поверхности и проверка качества выполненных работ. ".repeat(15)
-        val slot = ReportLayout.prepare(1, 8, 2, description)
-        assertEquals(ReportRules.caption(1, 8, 2, description), slot.caption.text.toString())
+        val slot = ReportLayout.prepare(1, "План второго этажа", 2, 8, description)
+        assertEquals(ReportRules.caption(1, "План второго этажа", 2, 8, description), slot.caption.text.toString())
         assertTrue(slot.frameHeight >= ReportLayout.MIN_FRAME_HEIGHT)
-        assertTrue(slot.frameHeight + ReportLayout.CAPTION_GAP + slot.caption.height <= ReportLayout.SLOT_HEIGHT)
+        assertTrue(slot.drawingFrameHeight + ReportLayout.GAP + slot.frameHeight +
+            ReportLayout.CAPTION_GAP + slot.caption.height <= ReportLayout.CONTENT_HEIGHT)
     }
     @Test fun noInputOrMissingFileLeavesNoOutput() = runBlocking {
         val dir = File(context.cacheDir, "pdf-failure-${System.nanoTime()}").apply { mkdirs() }
@@ -103,6 +104,61 @@ class PdfReportGeneratorTest {
                 }
             }
         } finally { input.delete(); report.file.delete() }
+    }
+
+    @Test fun pageShowsDrawingPreviewAndPointMarkerAboveThePhoto() = runBlocking {
+        val drawing = twoPageDrawing()
+        val photo = sourceWithColor("photo", Color.GREEN)
+        val report = PdfReportGenerator().generate(
+            listOf(PdfPhoto(photo.path, "Подпись", pointNumber = 3, drawingPage = 2,
+                drawingPath = drawing.path, drawingName = "План второго этажа", pointX = 0.5f, pointY = 0.5f)),
+            context.cacheDir
+        )
+        try {
+            PdfRenderer(ParcelFileDescriptor.open(report.file, ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer ->
+                renderer.openPage(0).use { page ->
+                    val bitmap = Bitmap.createBitmap(595, 842, Bitmap.Config.ARGB_8888)
+                    try {
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        assertEquals(Color.BLUE, bitmap.getPixel(297, 90))
+                        assertEquals(Color.RED, bitmap.getPixel(297, 153))
+                        assertEquals(Color.GREEN, bitmap.getPixel(297, 500))
+                    } finally { bitmap.recycle() }
+                }
+            }
+        } finally {
+            drawing.delete()
+            photo.delete()
+            report.file.delete()
+        }
+    }
+
+    private fun sourceWithColor(prefix: String, color: Int): File {
+        val file = File.createTempFile(prefix, ".png", context.cacheDir)
+        val image = Bitmap.createBitmap(240, 480, Bitmap.Config.ARGB_8888)
+        image.eraseColor(color)
+        file.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        image.recycle()
+        return file
+    }
+
+    private fun twoPageDrawing(): File {
+        val file = File.createTempFile("drawing-pages", ".pdf", context.cacheDir)
+        val pdf = android.graphics.pdf.PdfDocument()
+        try {
+            repeat(2) { index ->
+                val page = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(240, 480, index + 1).create())
+                page.canvas.drawColor(if (index == 0) Color.WHITE else Color.BLUE)
+                pdf.finishPage(page)
+            }
+            file.outputStream().use { pdf.writeTo(it) }
+            return file
+        } catch (failure: Throwable) {
+            file.delete()
+            throw failure
+        } finally {
+            pdf.close()
+        }
     }
 
 }

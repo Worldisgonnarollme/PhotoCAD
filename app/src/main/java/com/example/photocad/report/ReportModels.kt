@@ -4,7 +4,16 @@ import java.io.File
 import java.io.IOException
 
 /** Ordered input. No database, UI bitmap or Android context is required. */
-data class PdfPhoto(val filePath: String, val description: String, val pointNumber: Int = 1, val drawingPage: Int = 1)
+data class PdfPhoto(
+    val filePath: String,
+    val description: String,
+    val pointNumber: Int = 1,
+    val drawingPage: Int = 1,
+    val drawingPath: String = filePath,
+    val drawingName: String = "Чертёж",
+    val pointX: Float = 0.5f,
+    val pointY: Float = 0.5f
+)
 data class GeneratedReport(val file: File, val photoCount: Int, val pageCount: Int)
 class ReportException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
@@ -15,7 +24,11 @@ data class DraftPhoto(
     val description: String,
     val selected: Boolean = true,
     val drawingPage: Int = 1,
-    val pointNumber: Int = 1
+    val pointNumber: Int = 1,
+    val drawingPath: String = filePath,
+    val drawingName: String = "Чертёж",
+    val pointX: Float = 0.5f,
+    val pointY: Float = 0.5f
 )
 
 fun movePhoto(photos: List<DraftPhoto>, id: Long, delta: Int): List<DraftPhoto> {
@@ -27,7 +40,10 @@ fun movePhoto(photos: List<DraftPhoto>, id: Long, delta: Int): List<DraftPhoto> 
 }
 
 fun reportInput(photos: List<DraftPhoto>): List<PdfPhoto> =
-    photos.filter { it.selected }.map { PdfPhoto(it.filePath, it.description, it.pointNumber, it.drawingPage) }
+    photos.filter { it.selected }.map {
+        PdfPhoto(it.filePath, it.description, it.pointNumber, it.drawingPage,
+            it.drawingPath, it.drawingName, it.pointX, it.pointY)
+    }
 
 fun reportPointOrdinals(photos: List<DraftPhoto>): List<DraftPhoto> {
     val ordinalByPageAndPoint = linkedMapOf<Pair<Int, Long>, Int>()

@@ -26,8 +26,20 @@ class ReportDraftTest {
         assertEquals(listOf(1, 1, 2, 1, 3), reportPointOrdinals(photos).map { it.pointNumber })
     }
     @Test fun captionsIncludePhotoPointAndDrawingPageAndOmitBlankDescription() {
-        assertEquals("Фотография №2 • Точка №17 • Страница 3", ReportRules.caption(2, 17, 3, "  "))
-        assertEquals("Фотография №2 • Точка №17 • Страница 3 — Трещина", ReportRules.caption(2, 17, 3, " Трещина "))
+        assertEquals("Фото №2 • План этажа • Страница 3 • Точка №17", ReportRules.caption(2, "План этажа", 3, 17, "  "))
+        assertEquals("Фото №2 • План этажа • Страница 3 • Точка №17 — Трещина",
+            ReportRules.caption(2, "План этажа", 3, 17, " Трещина "))
+    }
+    @Test fun reportSnapshotCarriesDrawingAndPointLocation() {
+        val photo = DraftPhoto(1, 4, "/photo.jpg", "", drawingPage = 2, pointNumber = 3,
+            drawingPath = "/floor.pdf", drawingName = "Второй этаж", pointX = 0.25f, pointY = 0.75f)
+        val input = reportInput(listOf(photo)).single()
+        assertEquals("/floor.pdf", input.drawingPath)
+        assertEquals("Второй этаж", input.drawingName)
+        assertEquals(2, input.drawingPage)
+        assertEquals(3, input.pointNumber)
+        assertEquals(0.25f, input.pointX)
+        assertEquals(0.75f, input.pointY)
     }
     @Test fun moveAtBoundaryDoesNotDropItems() {
         val rows = listOf(DraftPhoto(1, 1, "a", ""), DraftPhoto(2, 1, "b", ""))
