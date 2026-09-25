@@ -62,4 +62,30 @@ class DrawingDocumentTest {
             file.delete()
         }
     }
+
+    @Test fun largePdfCanRenderFirstPageAgainAfterRenderingLastPage() {
+        val file = File.createTempFile("drawing-72-pages", ".pdf", context.cacheDir)
+        val pdf = PdfDocument()
+        try {
+            repeat(72) { index ->
+                val page = pdf.startPage(PdfDocument.PageInfo.Builder(120, 240, index + 1).create())
+                page.canvas.drawColor(if (index == 0) Color.WHITE else Color.LTGRAY)
+                pdf.finishPage(page)
+            }
+            file.outputStream().use { pdf.writeTo(it) }
+
+            val document = kotlinx.coroutines.runBlocking { openDrawingDocument(file.path) }
+            document.use {
+                assertEquals(72, it.pageCount)
+                listOf(1, 72, 1).forEach { pageNumber ->
+                    val rendered = kotlinx.coroutines.runBlocking { it.renderPage(pageNumber, 120) }
+                    try { assertTrue(rendered.width > 0 && rendered.height > 0) }
+                    finally { rendered.recycle() }
+                }
+            }
+        } finally {
+            pdf.close()
+            file.delete()
+        }
+    }
 }

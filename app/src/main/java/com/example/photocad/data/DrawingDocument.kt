@@ -163,18 +163,24 @@ private class ImageDrawingDocument(private val file: File) : DrawingDocument {
     override fun close() = Unit
 }
 
-private class PdfDrawingDocument(file: File) : DrawingDocument {
-    private val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-    private val renderer = try {
-        PdfRenderer(descriptor)
-    } catch (failure: Throwable) {
-        descriptor.close()
-        throw failure
+private class PdfDrawingDocument(private val file: File) : DrawingDocument {
+    private val rendererLock = Any()
+
+    private fun <T> withRenderer(block: (PdfRenderer) -> T): T = synchronized(rendererLock) {
+        val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        val renderer = try {
+            PdfRenderer(descriptor)
+        } catch (failure: Throwable) {
+            descriptor.close()
+            throw failure
+        }
+        // PdfRenderer owns the descriptor and closes it when the renderer is closed.
+        renderer.use(block)
     }
 
-    override val pageCount: Int = renderer.pageCount
+    override val pageCount: Int = withRenderer { it.pageCount }
 
-    override fun pageSize(pageNumber: Int): Size = synchronized(renderer) {
+    override fun pageSize(pageNumber: Int): Size = withRenderer { renderer ->
         require(pageNumber in 1..pageCount) { "Страница PDF вне диапазона" }
         renderer.openPage(pageNumber - 1).use { Size(it.width, it.height) }
     }
@@ -182,7 +188,7 @@ private class PdfDrawingDocument(file: File) : DrawingDocument {
     override suspend fun renderPage(pageNumber: Int, maxWidth: Int): Bitmap = withContext(Dispatchers.IO) {
         require(pageNumber in 1..pageCount) { "Страница PDF вне диапазона" }
         require(maxWidth > 0)
-        synchronized(renderer) {
+        withRenderer { renderer ->
             renderer.openPage(pageNumber - 1).use { page ->
                 val scale = (maxWidth.toFloat() / maxOf(page.width, page.height)).coerceAtMost(1f)
                 val width = (page.width * scale).toInt().coerceAtLeast(1)
@@ -195,8 +201,7 @@ private class PdfDrawingDocument(file: File) : DrawingDocument {
         }
     }
 
-    override fun close() = synchronized(renderer) {
-        renderer.close()
-        descriptor.close()
-    }
+    // Each PDF operation owns a short-lived renderer, so disposal of a screen cannot
+    // close a renderer that a page-render coroutine is still using.
+    override fun close() = Unit
 }
