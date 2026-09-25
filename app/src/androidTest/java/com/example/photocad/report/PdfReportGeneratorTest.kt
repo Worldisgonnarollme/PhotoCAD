@@ -23,7 +23,7 @@ class PdfReportGeneratorTest {
     @Test fun oneTwoThreeAndLargeReports() = runBlocking {
         val input = source()
         try {
-            for ((count, pages) in listOf(1 to 1, 2 to 1, 3 to 2, 100 to 50)) {
+            for ((count, pages) in listOf(1 to 1, 2 to 2, 3 to 3, 100 to 100)) {
                 val output = PdfReportGenerator().generate(
                     List(count) { PdfPhoto(input.path, "Русское описание ${it + 1}") }, context.cacheDir
                 )
@@ -41,8 +41,8 @@ class PdfReportGeneratorTest {
     }
     @Test fun longCaptionFitsWithoutEllipsis() {
         val description = "Подготовка поверхности и проверка качества выполненных работ. ".repeat(15)
-        val slot = ReportLayout.prepare(1, description)
-        assertEquals(ReportRules.caption(1, description), slot.caption.text.toString())
+        val slot = ReportLayout.prepare(1, 8, 2, description)
+        assertEquals(ReportRules.caption(1, 8, 2, description), slot.caption.text.toString())
         assertTrue(slot.frameHeight >= ReportLayout.MIN_FRAME_HEIGHT)
         assertTrue(slot.frameHeight + ReportLayout.CAPTION_GAP + slot.caption.height <= ReportLayout.SLOT_HEIGHT)
     }
@@ -98,7 +98,7 @@ class PdfReportGeneratorTest {
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         assertEquals(Color.BLUE, bitmap.getPixel(297, 200))
                         assertEquals(Color.WHITE, bitmap.getPixel(50, 200))
-                        assertEquals(Color.WHITE, bitmap.getPixel(297, 600))
+                        assertEquals(Color.BLUE, bitmap.getPixel(297, 600))
                     } finally { bitmap.recycle() }
                 }
             }

@@ -13,7 +13,7 @@ object ReportLayout {
     const val MARGIN = 28f
     const val GAP = 18f
     const val WIDTH = 539
-    const val SLOT_HEIGHT = 384f
+    const val SLOT_HEIGHT = PAGE_HEIGHT - 2 * MARGIN
     const val CAPTION_GAP = 6f
     const val IMAGE_PADDING = 8f
     const val MIN_FRAME_HEIGHT = 120f
@@ -21,7 +21,13 @@ object ReportLayout {
     data class Slot(val caption: StaticLayout, val frameHeight: Float)
 
     fun prepare(number: Int, description: String): Slot {
-        val text = ReportRules.caption(number, description)
+        return prepareCaption(ReportRules.caption(number, description))
+    }
+
+    fun prepare(number: Int, pointNumber: Int, drawingPage: Int, description: String): Slot =
+        prepareCaption(ReportRules.caption(number, pointNumber, drawingPage, description))
+
+    private fun prepareCaption(text: String): Slot {
         // No maxLines or ellipsize: text either fits in full or export reports an error.
         for (size in listOf(11f, 10f, 9f, 8f)) {
             val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -39,6 +45,6 @@ object ReportLayout {
             val frameHeight = SLOT_HEIGHT - CAPTION_GAP - layout.height
             if (frameHeight >= MIN_FRAME_HEIGHT) return Slot(layout, frameHeight)
         }
-        throw ReportException("Подпись фотографии №$number слишком длинная для половины A4. Сократите её только для отчёта: исходное описание не изменится.")
+        throw ReportException("Подпись слишком длинная для страницы A4. Сократите её только для отчёта: исходное описание не изменится.")
     }
 }

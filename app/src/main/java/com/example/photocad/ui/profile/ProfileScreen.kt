@@ -48,7 +48,7 @@ fun ProfileScreen(
             confirmButton = { TextButton(onClick = { error = null; onDismissMessage() }) { Text("Закрыть") } })
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.statusBarsPadding().fillMaxSize()) {
         Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(

@@ -11,7 +11,3 @@ val TextMain = Color(0xFF1A1A2E)
 val TextMuted = Color(0xFF7B8499)
 val Green = Color(0xFF34C759)
 val Red = Color(0xFFFF3B30)
-
-// Тёмная палитра вьювера чертежа
-val ViewerBackground = Color(0xFF1A1A2E)
-val ViewerCard = Color(0xFF1C2535)

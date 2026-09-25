@@ -12,7 +12,7 @@ import java.io.File
 class DeleteOperationsTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-    @Test fun deletePointRemovesItsPhotosAndFilesButKeepsOtherPoints() = runBlocking {
+    @Test fun deletePointKeepsPhotoFileWhileAnotherPointStillReferencesIt() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val siteId = db.siteDao().insert(Site(name = "Объект"))
@@ -21,23 +21,26 @@ class DeleteOperationsTest {
             val deletedPointId = db.pointDao().insert(Point(drawingId = drawingId, x = 0f, y = 0f))
             val photoFile = File.createTempFile("photo", ".jpg", context.filesDir)
             db.photoDao().insert(Photo(pointId = deletedPointId, filePath = photoFile.path))
+            db.photoDao().insert(Photo(pointId = keptPointId, filePath = photoFile.path))
 
             db.deletePoint(deletedPointId)
 
             assertNull(db.pointDao().getById(deletedPointId))
             assertNotNull(db.pointDao().getById(keptPointId))
             assertTrue(db.photoDao().getByPoint(deletedPointId).first().isEmpty())
+            assertTrue(photoFile.exists())
+            db.deletePoint(keptPointId)
             assertFalse(photoFile.exists())
         } finally { db.close() }
     }
 
-    @Test fun deleteDrawingRemovesItsPointsPhotosAndFileButKeepsOtherDrawing() = runBlocking {
+    @Test fun deleteDrawingKeepsSharedDrawingFileUntilLastDrawingIsDeleted() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val siteId = db.siteDao().insert(Site(name = "Объект"))
             val drawingFile = File.createTempFile("drawing", ".jpg", context.filesDir)
             val deletedDrawingId = db.drawingDao().insert(Drawing(name = "Удаляемый", filePath = drawingFile.path, siteId = siteId))
-            val keptDrawingId = db.drawingDao().insert(Drawing(name = "Оставшийся", filePath = "other.jpg", siteId = siteId))
+            val keptDrawingId = db.drawingDao().insert(Drawing(name = "Оставшийся", filePath = drawingFile.path, siteId = siteId))
             val pointId = db.pointDao().insert(Point(drawingId = deletedDrawingId, x = 0f, y = 0f))
             val photoFile = File.createTempFile("photo", ".jpg", context.filesDir)
             db.photoDao().insert(Photo(pointId = pointId, filePath = photoFile.path))
@@ -47,8 +50,10 @@ class DeleteOperationsTest {
             assertNull(db.drawingDao().getById(deletedDrawingId))
             assertNotNull(db.drawingDao().getById(keptDrawingId))
             assertTrue(db.pointDao().getByDrawing(deletedDrawingId).first().isEmpty())
-            assertFalse(drawingFile.exists())
+            assertTrue(drawingFile.exists())
             assertFalse(photoFile.exists())
+            db.deleteDrawing(keptDrawingId)
+            assertFalse(drawingFile.exists())
         } finally { db.close() }
     }
 
@@ -59,7 +64,7 @@ class DeleteOperationsTest {
             val keptSiteId = db.siteDao().insert(Site(name = "Оставшийся объект"))
             val drawingFile = File.createTempFile("drawing", ".jpg", context.filesDir)
             db.drawingDao().insert(Drawing(name = "Чертёж", filePath = drawingFile.path, siteId = deletedSiteId))
-            val keptDrawingId = db.drawingDao().insert(Drawing(name = "Чужой чертёж", filePath = "other.jpg", siteId = keptSiteId))
+            val keptDrawingId = db.drawingDao().insert(Drawing(name = "Чужой чертёж", filePath = drawingFile.path, siteId = keptSiteId))
 
             db.deleteSite(deletedSiteId)
 
@@ -67,6 +72,8 @@ class DeleteOperationsTest {
             assertNotNull(db.siteDao().getById(keptSiteId))
             assertTrue(db.drawingDao().getBySite(deletedSiteId).first().isEmpty())
             assertNotNull(db.drawingDao().getById(keptDrawingId))
+            assertTrue(drawingFile.exists())
+            db.deleteSite(keptSiteId)
             assertFalse(drawingFile.exists())
         } finally { db.close() }
     }

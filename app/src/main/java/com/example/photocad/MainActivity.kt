@@ -6,6 +6,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Home
@@ -17,6 +21,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import com.example.photocad.ui.report.ReportScreen
 import com.example.photocad.data.AppDatabase
+import com.example.photocad.data.AppThemeMode
+import com.example.photocad.data.UserPreferences
 import com.example.photocad.ui.DrawingListScreen
 import com.example.photocad.ui.DrawingScreen
 import com.example.photocad.ui.SiteListScreen
@@ -31,7 +37,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val db = AppDatabase.getInstance(this) // создание бд при старте
         setContent {
-            PhotoCADTheme {
+            val themeMode by UserPreferences.themeModeFlow(this@MainActivity)
+                .collectAsState(initial = AppThemeMode.SYSTEM)
+            PhotoCADTheme(mode = themeMode) {
                 val profileViewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory(application))
                 val profileUi by profileViewModel.state.collectAsState()
 
@@ -57,6 +65,7 @@ private fun MainApp(db: AppDatabase, profileViewModel: ProfileViewModel) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.OBJECTS) }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(

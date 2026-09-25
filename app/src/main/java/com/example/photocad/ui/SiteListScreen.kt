@@ -33,7 +33,7 @@ fun SiteListScreen(db: AppDatabase, onOpenSite: (Long) -> Unit) {
             onBack = { editingSite = null },
             onSaved = { editingSite = null }
         )
-        else -> Column(Modifier.fillMaxSize()) {
+        else -> Column(Modifier.statusBarsPadding().fillMaxSize()) {
             Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),

@@ -1,8 +1,18 @@
 package com.example.photocad.ui.theme
 
+import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.example.photocad.data.AppThemeMode
 
 private val LightColors = lightColorScheme(
     primary = Primary,
@@ -19,22 +29,45 @@ private val LightColors = lightColorScheme(
     onError = CardColor
 )
 
-// Тёмная схема для hero-экрана просмотра чертежа (ui/DrawingScreen.kt).
-val ViewerColors = androidx.compose.material3.darkColorScheme(
-    primary = Primary,
-    onPrimary = CardColor,
-    surface = ViewerBackground,
-    onSurface = CardColor,
-    background = ViewerBackground,
-    onBackground = CardColor,
-    surfaceVariant = ViewerCard,
-    onSurfaceVariant = CardColor
+private val DarkColors = darkColorScheme(
+    primary = Color(0xFF8AB4FF),
+    onPrimary = Color(0xFF062E6F),
+    primaryContainer = Color(0xFF174A91),
+    onPrimaryContainer = Color(0xFFD7E3FF),
+    surface = Color(0xFF171A20),
+    onSurface = Color(0xFFE2E2E9),
+    background = Color(0xFF111318),
+    onBackground = Color(0xFFE2E2E9),
+    surfaceVariant = Color(0xFF292D35),
+    onSurfaceVariant = Color(0xFFC2C6D0),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005)
 )
 
 @Composable
-fun PhotoCADTheme(content: @Composable () -> Unit) {
+fun PhotoCADTheme(mode: AppThemeMode, content: @Composable () -> Unit) {
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (mode) {
+        AppThemeMode.SYSTEM -> systemDark
+        AppThemeMode.LIGHT -> false
+        AppThemeMode.DARK -> true
+    }
+    val colors = if (dark) DarkColors else LightColors
+    val view = LocalView.current
+    SideEffect {
+        (view.context as? Activity)?.window?.let { window ->
+            window.statusBarColor = colors.background.toArgb()
+            window.navigationBarColor = colors.background.toArgb()
+            WindowInsetsControllerCompat(window, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+            // Compose Scaffold/TopAppBar consume system-bar insets; let them do so once.
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+        }
+    }
     MaterialTheme(
-        colorScheme = LightColors,
+        colorScheme = colors,
         shapes = AppShapes,
         typography = AppTypography,
         content = content

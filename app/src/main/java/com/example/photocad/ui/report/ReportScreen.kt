@@ -89,7 +89,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                             Column(Modifier.weight(1f).padding(start = 8.dp)) {
                                 val number = state.photos.take(index + 1).count { it.selected }
                                 Text(if (photo.selected) "Фотография №$number" else "Исключена из PDF", style = MaterialTheme.typography.labelLarge)
-                                Text("Точка ${photo.pointId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Точка №${photo.pointNumber} • Страница ${photo.drawingPage}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Row {

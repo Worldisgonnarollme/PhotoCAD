@@ -38,11 +38,11 @@ fun DrawingListScreen(db: AppDatabase, siteId: Long, onBack: () -> Unit, onOpenD
 
     LaunchedEffect(siteId) { site = db.siteDao().getById(siteId) }
 
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             scope.launch {
                 try {
-                    pendingImportPath = copyUriToAppStorage(context, it)
+                    pendingImportPath = importDrawing(context, it).path
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (failure: Exception) { importError = "Не удалось добавить чертёж: ${failure.message}" }
             }
@@ -63,8 +63,17 @@ fun DrawingListScreen(db: AppDatabase, siteId: Long, onBack: () -> Unit, onOpenD
             onBack = { File(pendingImportPath!!).delete(); pendingImportPath = null },
             onConfirm = { name, description ->
                 scope.launch {
-                    db.drawingDao().insert(Drawing(name = name, filePath = pendingImportPath!!, siteId = siteId, description = description))
-                    pendingImportPath = null
+                    val importedPath = pendingImportPath ?: return@launch
+                    try {
+                        db.drawingDao().insert(Drawing(name = name, filePath = importedPath, siteId = siteId, description = description))
+                        pendingImportPath = null
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        File(importedPath).delete()
+                        pendingImportPath = null
+                        importError = "Не удалось добавить чертёж: ${failure.message}"
+                    }
                 }
             },
             onDelete = null
@@ -94,7 +103,7 @@ fun DrawingListScreen(db: AppDatabase, siteId: Long, onBack: () -> Unit, onOpenD
                     navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } },
                     actions = {
                         IconButton(
-                            onClick = { pickImage.launch("image/*") },
+                            onClick = { pickImage.launch(arrayOf("application/pdf", "image/png", "image/jpeg")) },
                             modifier = Modifier.padding(end = 8.dp).size(36.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                         ) { Icon(Icons.Default.Add, contentDescription = "Добавить чертёж", tint = MaterialTheme.colorScheme.onPrimary) }
                     }
@@ -118,7 +127,9 @@ fun DrawingListScreen(db: AppDatabase, siteId: Long, onBack: () -> Unit, onOpenD
                     )
                 }
                 item {
-                    DashedAddCard(label = "Добавить чертёж", onClick = { pickImage.launch("image/*") })
+                    DashedAddCard(label = "Добавить чертёж", onClick = {
+                        pickImage.launch(arrayOf("application/pdf", "image/png", "image/jpeg"))
+                    })
                 }
             }
         }

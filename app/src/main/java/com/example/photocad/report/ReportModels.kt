@@ -4,7 +4,7 @@ import java.io.File
 import java.io.IOException
 
 /** Ordered input. No database, UI bitmap or Android context is required. */
-data class PdfPhoto(val filePath: String, val description: String)
+data class PdfPhoto(val filePath: String, val description: String, val pointNumber: Int = 1, val drawingPage: Int = 1)
 data class GeneratedReport(val file: File, val photoCount: Int, val pageCount: Int)
 class ReportException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
@@ -13,7 +13,9 @@ data class DraftPhoto(
     val pointId: Long,
     val filePath: String,
     val description: String,
-    val selected: Boolean = true
+    val selected: Boolean = true,
+    val drawingPage: Int = 1,
+    val pointNumber: Int = 1
 )
 
 fun movePhoto(photos: List<DraftPhoto>, id: Long, delta: Int): List<DraftPhoto> {
@@ -25,4 +27,18 @@ fun movePhoto(photos: List<DraftPhoto>, id: Long, delta: Int): List<DraftPhoto> 
 }
 
 fun reportInput(photos: List<DraftPhoto>): List<PdfPhoto> =
-    photos.filter { it.selected }.map { PdfPhoto(it.filePath, it.description) }
+    photos.filter { it.selected }.map { PdfPhoto(it.filePath, it.description, it.pointNumber, it.drawingPage) }
+
+fun reportPointOrdinals(photos: List<DraftPhoto>): List<DraftPhoto> {
+    val ordinalByPageAndPoint = linkedMapOf<Pair<Int, Long>, Int>()
+    val nextByPage = mutableMapOf<Int, Int>()
+    return photos.map { photo ->
+        val key = photo.drawingPage to photo.pointId
+        val ordinal = ordinalByPageAndPoint.getOrPut(key) {
+            val next = (nextByPage[photo.drawingPage] ?: 0) + 1
+            nextByPage[photo.drawingPage] = next
+            next
+        }
+        photo.copy(pointNumber = ordinal)
+    }
+}

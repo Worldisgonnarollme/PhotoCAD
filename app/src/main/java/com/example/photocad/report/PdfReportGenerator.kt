@@ -33,7 +33,7 @@ class PdfReportGenerator {
                     // Preflight before any final output exists; no full-resolution bitmap list.
                     snapshot.forEachIndexed { index, photo ->
                         currentCoroutineContext().ensureActive()
-                        ReportLayout.prepare(index + 1, photo.description)
+                        ReportLayout.prepare(index + 1, photo.pointNumber, photo.drawingPage, photo.description)
                         if (!File(photo.filePath).isFile) throw ReportException("Фотография №${index + 1}: исходный файл отсутствует")
                     }
                     val document = PdfDocument()
@@ -44,21 +44,20 @@ class PdfReportGenerator {
                             strokeWidth = 0.8f
                         }
                         val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-                        for (pageIndex in 0 until ReportRules.pageCount(snapshot.size)) {
+                        for (pageIndex in snapshot.indices) {
                             currentCoroutineContext().ensureActive()
                             val page = document.startPage(PdfDocument.PageInfo.Builder(
-                                ReportLayout.PAGE_WIDTH, ReportLayout.PAGE_HEIGHT, pageIndex + 1
+                                    ReportLayout.PAGE_WIDTH, ReportLayout.PAGE_HEIGHT, pageIndex + 1
                             ).create())
                             try {
                                 val canvas = page.canvas
                                 canvas.drawColor(Color.WHITE)
-                                for (position in 0..1) {
-                                    val index = pageIndex * 2 + position
-                                    if (index >= snapshot.size) break
+                                run {
+                                    val index = pageIndex
                                     currentCoroutineContext().ensureActive()
                                     val photo = snapshot[index]
-                                    val slot = ReportLayout.prepare(index + 1, photo.description)
-                                    val top = ReportLayout.MARGIN + position * (ReportLayout.SLOT_HEIGHT + ReportLayout.GAP)
+                                    val slot = ReportLayout.prepare(index + 1, photo.pointNumber, photo.drawingPage, photo.description)
+                                    val top = ReportLayout.MARGIN
                                     val frame = RectF(ReportLayout.MARGIN, top, ReportLayout.MARGIN + ReportLayout.WIDTH, top + slot.frameHeight)
                                     val bitmap = try { ReportImageLoader.load(photo.filePath) }
                                     catch (failure: Exception) { throw ReportException("Фотография №${index + 1}: ${failure.message}", failure) }

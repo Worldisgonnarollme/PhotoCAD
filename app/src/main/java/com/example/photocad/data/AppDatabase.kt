@@ -54,6 +54,7 @@ interface DrawingDao {
     suspend fun update(id: Long, name: String, description: String): Int
     @Query("DELETE FROM drawings WHERE id = :id") suspend fun delete(id: Long)
     @Query("SELECT COUNT(*) FROM drawings") fun drawingCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM drawings WHERE filePath = :path") suspend fun countByFilePath(path: String): Int
     @Query(
         """
         SELECT drawings.*, (SELECT COUNT(*) FROM points WHERE points.drawingId = drawings.id) AS pointCount
@@ -66,7 +67,9 @@ interface DrawingDao {
 @Dao
 interface PointDao {
     @Insert suspend fun insert(point: Point): Long
-    @Query("SELECT * FROM points WHERE drawingId = :drawingId") fun getByDrawing(drawingId: Long): Flow<List<Point>>
+    @Query("SELECT * FROM points WHERE drawingId = :drawingId ORDER BY id ASC") fun getByDrawing(drawingId: Long): Flow<List<Point>>
+    @Query("SELECT * FROM points WHERE drawingId = :drawingId AND pageNumber = :pageNumber ORDER BY id ASC")
+    fun getByDrawingPage(drawingId: Long, pageNumber: Int): Flow<List<Point>>
     @Query("SELECT * FROM points WHERE id = :id") suspend fun getById(id: Long): Point?
     @Query("UPDATE points SET comment = :comment WHERE id = :id")
     suspend fun updateComment(id: Long, comment: String): Int
@@ -82,6 +85,7 @@ interface PointDao {
 data class ReportPhotoRow(
     val photoId: Long,
     val pointId: Long,
+    val pageNumber: Int,
     val filePath: String,
     val description: String?,
     val pointComment: String
@@ -94,8 +98,9 @@ interface PhotoDao {
     @Query("UPDATE photos SET description = :description WHERE id = :id")
     suspend fun updateDescription(id: Long, description: String): Int
     @Query("DELETE FROM photos WHERE pointId = :pointId") suspend fun deleteByPoint(pointId: Long)
+    @Query("SELECT COUNT(*) FROM photos WHERE filePath = :path") suspend fun countByFilePath(path: String): Int
     @Query("""
-        SELECT photos.id AS photoId, photos.pointId, photos.filePath,
+        SELECT photos.id AS photoId, photos.pointId, points.pageNumber, photos.filePath,
                photos.description, points.comment AS pointComment
         FROM photos INNER JOIN points ON photos.pointId = points.id
         WHERE points.drawingId = :drawingId
@@ -104,7 +109,7 @@ interface PhotoDao {
     suspend fun getReportRows(drawingId: Long): List<ReportPhotoRow>
 }
 
-@Database(entities = [Site::class, Drawing::class, Point::class, Photo::class], version = 5, exportSchema = true)
+@Database(entities = [Site::class, Drawing::class, Point::class, Photo::class], version = 6, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun siteDao(): SiteDao
     abstract fun drawingDao(): DrawingDao
@@ -118,7 +123,8 @@ abstract class AppDatabase : RoomDatabase() {
                 INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "photocad.db")
                     .addMigrations(
                         DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3,
-                        DatabaseMigrations.MIGRATION_3_4, DatabaseMigrations.MIGRATION_4_5
+                        DatabaseMigrations.MIGRATION_3_4, DatabaseMigrations.MIGRATION_4_5,
+                        DatabaseMigrations.MIGRATION_5_6
                     )
                     .build().also { INSTANCE = it }
             }

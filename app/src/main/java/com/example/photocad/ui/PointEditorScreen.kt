@@ -3,7 +3,10 @@
 package com.example.photocad.ui
 
 import android.app.Application
-import android.graphics.BitmapFactory
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -34,8 +37,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -165,10 +170,33 @@ private fun PointTabContent(
 
 @Composable
 private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, drawing: Drawing?, colorIndex: Int, scope: kotlinx.coroutines.CoroutineScope) {
-    val bitmap = remember(drawing) { drawing?.let { BitmapFactory.decodeFile(it.filePath)?.asImageBitmap() } }
+    var preview by remember(drawing?.filePath, point.pageNumber) { mutableStateOf<Pair<Bitmap, android.util.Size>?>(null) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
     var dragOffsetPx by remember(point.id) { mutableStateOf<Offset?>(null) }
     val density = LocalDensity.current
+    LaunchedEffect(drawing?.filePath, point.pageNumber) {
+        preview = null
+        val path = drawing?.filePath ?: return@LaunchedEffect
+        var reader: DrawingDocument? = null
+        try {
+            reader = openDrawingDocument(path)
+            val size = reader.pageSize(point.pageNumber)
+            val bitmap = reader.renderPage(point.pageNumber, 800)
+            preview = bitmap to size
+        } catch (_: Exception) {
+            preview = null
+        } finally {
+            reader?.close()
+        }
+    }
+    val pageRect = remember(preview, boxSize) {
+        preview?.second?.let { page ->
+            if (boxSize.width > 0 && boxSize.height > 0)
+                fitPageRect(boxSize.width.toFloat(), boxSize.height.toFloat(), page.width.toFloat(), page.height.toFloat())
+            else null
+        }
+    }
+    val transform = pageRect?.let { rect -> PageTransform(rect, Offset(boxSize.width / 2f, boxSize.height / 2f), 1f, Offset.Zero) }
 
     Box(
         Modifier
@@ -178,41 +206,39 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
             .background(Color(0xFFF8F6F0))
             .onSizeChanged { boxSize = it }
     ) {
-        bitmap?.let { Image(bitmap = it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
-        val currentPx = dragOffsetPx ?: Offset(point.x * boxSize.width, point.y * boxSize.height)
-        Box(
-            Modifier
-                .offset(
-                    x = with(density) { currentPx.x.toDp() } - 14.dp,
-                    y = with(density) { currentPx.y.toDp() } - 14.dp
-                )
-                .size(28.dp)
-                .background(pointColors[colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
-                .pointerInput(point.id, boxSize) {
-                    detectDragGestures(
-                        onDragStart = { dragOffsetPx = Offset(point.x * boxSize.width, point.y * boxSize.height) },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            val base = dragOffsetPx ?: Offset(point.x * boxSize.width, point.y * boxSize.height)
-                            dragOffsetPx = Offset(
-                                (base.x + dragAmount.x).coerceIn(0f, boxSize.width.toFloat()),
-                                (base.y + dragAmount.y).coerceIn(0f, boxSize.height.toFloat())
-                            )
-                        },
-                        onDragEnd = {
-                            val final = dragOffsetPx
-                            if (final != null && boxSize.width > 0 && boxSize.height > 0) {
-                                val fx = (final.x / boxSize.width).coerceIn(0f, 1f)
-                                val fy = (final.y / boxSize.height).coerceIn(0f, 1f)
-                                scope.launch { db.pointDao().updatePosition(point.id, fx, fy) }
-                            }
-                        },
-                        onDragCancel = { dragOffsetPx = null }
-                    )
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Text("$displayIndex", color = Color.White, style = MaterialTheme.typography.labelSmall)
+        preview?.first?.let { bitmap ->
+            Image(bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+        }
+        val rect = pageRect
+        val pageTransform = transform
+        if (rect != null && pageTransform != null) {
+            val currentPx = dragOffsetPx ?: pageTransform.pageToScreen(Offset(point.x, point.y))
+            Box(
+                Modifier
+                    .offset(x = with(density) { currentPx.x.toDp() } - 14.dp, y = with(density) { currentPx.y.toDp() } - 14.dp)
+                    .size(28.dp)
+                    .background(pointColors[colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
+                    .pointerInput(point.id, rect) {
+                        detectDragGestures(
+                            onDragStart = { dragOffsetPx = pageTransform.pageToScreen(Offset(point.x, point.y)) },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val base = dragOffsetPx ?: pageTransform.pageToScreen(Offset(point.x, point.y))
+                                dragOffsetPx = base + dragAmount
+                            },
+                            onDragEnd = {
+                                val final = dragOffsetPx
+                                dragOffsetPx = null
+                                if (final != null) {
+                                    val normalized = pageTransform.screenToPageClamped(final)
+                                    scope.launch { db.pointDao().updatePosition(point.id, normalized.x, normalized.y) }
+                                }
+                            },
+                            onDragCancel = { dragOffsetPx = null }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) { Text("$displayIndex", color = Color.White, style = MaterialTheme.typography.labelSmall) }
         }
     }
 }
@@ -228,12 +254,51 @@ private fun PhotoTabContent(
     onMessage: (String?) -> Unit
 ) {
     var pendingCameraPath by rememberSaveable(point.id) { mutableStateOf<String?>(null) }
+    val preferences by UserPreferences.photoPreferencesFlow(context).collectAsState(initial = PhotoPreferences())
+    var pendingGalleryUri by remember(point.id) { mutableStateOf<android.net.Uri?>(null) }
+    var pendingCameraPermissionResult by remember(point.id) { mutableStateOf<Boolean?>(null) }
+
+    val requestGalleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        pendingGalleryUri?.let { uri ->
+            pendingGalleryUri = null
+            onMessage(null)
+            model.importGallery(uri, allowGallery = granted)
+        }
+        val cameraResult = pendingCameraPermissionResult
+        val cameraPath = pendingCameraPath
+        if (cameraResult != null && cameraPath != null) {
+            pendingCameraPermissionResult = null
+            pendingCameraPath = null
+            onMessage(null)
+            model.cameraResult(cameraPath, cameraResult, allowGallery = granted)
+        }
+    }
+
+    fun needsGalleryPermission(): Boolean = preferences.saveToGallery && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) { onMessage(null); model.importGallery(uri) }
+        if (uri != null) {
+            if (needsGalleryPermission()) {
+                pendingGalleryUri = uri
+                requestGalleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            } else {
+                onMessage(null)
+                model.importGallery(uri)
+            }
+        }
     }
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        pendingCameraPath?.let { path -> onMessage(null); model.cameraResult(path, success); pendingCameraPath = null }
+        pendingCameraPath?.let { path ->
+            if (success && needsGalleryPermission()) {
+                pendingCameraPermissionResult = true
+                requestGalleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            } else {
+                onMessage(null)
+                model.cameraResult(path, success)
+                pendingCameraPath = null
+            }
+        }
     }
     fun launchCamera() {
         scope.launch {

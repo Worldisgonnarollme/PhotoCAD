@@ -4,6 +4,7 @@ package com.example.photocad.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.room.withTransaction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,11 +41,11 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
     var importError by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf(false) }
 
-    val pickBlueprint = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val pickBlueprint = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             scope.launch {
                 try {
-                    pendingBlueprints = pendingBlueprints + copyUriToAppStorage(context, it)
+                    pendingBlueprints = pendingBlueprints + importDrawing(context, it).path
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
@@ -52,6 +53,12 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
                 }
             }
         }
+    }
+
+    fun discardDraftAndBack() {
+        pendingBlueprints.forEach { File(it).delete() }
+        pendingBlueprints = emptyList()
+        onBack()
     }
 
     importError?.let { message ->
@@ -63,7 +70,7 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
         topBar = {
             TopAppBar(
                 title = { Text(if (editing == null) "Новый объект" else "Изменить объект") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } }
+                navigationIcon = { IconButton(onClick = ::discardDraftAndBack) { Icon(Icons.Default.ArrowBack, null) } }
             )
         }
     ) { padding ->
@@ -106,7 +113,9 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
                                     }) { Icon(Icons.Default.Close, contentDescription = "Убрать чертёж") }
                                 }
                             }
-                            DashedAddCard(label = "Добавить чертёж", onClick = { pickBlueprint.launch("image/*") })
+                            DashedAddCard(label = "Добавить чертёж", onClick = {
+                                pickBlueprint.launch(arrayOf("application/pdf", "image/png", "image/jpeg"))
+                            })
                         }
                     }
                 }
@@ -128,14 +137,27 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
                     onClick = {
                         scope.launch {
                             if (editing == null) {
-                                val siteId = db.siteDao().insert(Site(name = name.trim(), address = address.trim(), description = description.trim()))
-                                pendingBlueprints.forEachIndexed { index, path ->
-                                    db.drawingDao().insert(Drawing(name = "Чертёж ${index + 1}", filePath = path, siteId = siteId))
+                                val paths = pendingBlueprints
+                                try {
+                                    db.withTransaction {
+                                        val siteId = db.siteDao().insert(Site(name = name.trim(), address = address.trim(), description = description.trim()))
+                                        paths.forEachIndexed { index, path ->
+                                            db.drawingDao().insert(Drawing(name = "Чертёж ${index + 1}", filePath = path, siteId = siteId))
+                                        }
+                                    }
+                                    pendingBlueprints = emptyList()
+                                    onSaved()
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (failure: Exception) {
+                                    paths.forEach { File(it).delete() }
+                                    pendingBlueprints = emptyList()
+                                    importError = "Не удалось создать объект: ${failure.message}"
                                 }
                             } else {
                                 db.siteDao().update(editing.id, name.trim(), address.trim(), description.trim())
+                                onSaved()
                             }
-                            onSaved()
                         }
                     }
                 )

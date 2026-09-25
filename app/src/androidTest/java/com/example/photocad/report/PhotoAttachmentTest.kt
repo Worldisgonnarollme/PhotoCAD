@@ -21,6 +21,8 @@ class PhotoAttachmentTest {
         val bitmap = Bitmap.createBitmap(20, 30, Bitmap.Config.ARGB_8888)
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
+        val previousPreferences = runBlocking { UserPreferences.photoPreferencesFlow(app).first() }
+        runBlocking { UserPreferences.savePhotoPreferences(app, PhotoPreferences(saveToGallery = false, compressPhotos = false)) }
         try {
             val pointId = runBlocking {
                 val drawingId = db.drawingDao().insert(Drawing(name = "Чертёж", filePath = file.path, siteId = 1))
@@ -36,8 +38,14 @@ class PhotoAttachmentTest {
             val photo = runBlocking { db.photoDao().getByPoint(pointId).first().single() }
             assertEquals(file.path, photo.filePath)
             assertEquals("Копия", photo.description)
+            runBlocking { db.pointDao().updateComment(pointId, "Изменённый комментарий") }
+            assertEquals("Копия", runBlocking { db.photoDao().getByPoint(pointId).first().single().description })
             instrumentation.runOnMainSync { model.cameraResult(file.path, true) }
             assertEquals(1, runBlocking { db.photoDao().getByPoint(pointId).first().size })
-        } finally { db.close(); file.delete() }
+        } finally {
+            db.close()
+            file.delete()
+            runBlocking { UserPreferences.savePhotoPreferences(app, previousPreferences) }
+        }
     }
 }

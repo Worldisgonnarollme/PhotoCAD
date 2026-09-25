@@ -4,14 +4,23 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.flow.first
 import java.io.File
 
+internal fun isFileUnreferenced(drawingReferences: Int, photoReferences: Int): Boolean =
+    drawingReferences == 0 && photoReferences == 0
+
 /** Cascading deletes: DB rows first (transactional), then best-effort file cleanup. */
+private suspend fun AppDatabase.deleteFilesWhenUnreferenced(paths: Iterable<String>) {
+    paths.toSet().forEach { path ->
+        if (isFileUnreferenced(drawingDao().countByFilePath(path), photoDao().countByFilePath(path))) File(path).delete()
+    }
+}
+
 suspend fun AppDatabase.deletePoint(pointId: Long) {
     val files = photoDao().getByPoint(pointId).first().map { it.filePath }
     withTransaction {
         photoDao().deleteByPoint(pointId)
         pointDao().delete(pointId)
     }
-    files.forEach { File(it).delete() }
+    deleteFilesWhenUnreferenced(files)
 }
 
 suspend fun AppDatabase.deleteDrawing(drawingId: Long) {
@@ -23,8 +32,7 @@ suspend fun AppDatabase.deleteDrawing(drawingId: Long) {
         pointDao().deleteByDrawing(drawingId)
         drawingDao().delete(drawingId)
     }
-    photoFiles.forEach { File(it).delete() }
-    drawing?.let { File(it.filePath).delete() }
+    deleteFilesWhenUnreferenced(photoFiles + listOfNotNull(drawing?.filePath))
 }
 
 suspend fun AppDatabase.deleteSite(siteId: Long) {

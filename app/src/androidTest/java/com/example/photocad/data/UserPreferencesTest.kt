@@ -40,4 +40,16 @@ class UserPreferencesTest {
         UserPreferences.updateAvatarPath(context, "/tmp/new.jpg")
         assertEquals(UserProfile("Имя", "/tmp/new.jpg"), UserPreferences.profileFlow(context).first())
     }
+
+    @Test fun settingsSurviveProfileClear() = runBlocking {
+        UserPreferences.saveThemeMode(context, AppThemeMode.DARK)
+        UserPreferences.savePhotoPreferences(context, PhotoPreferences(saveToGallery = false, compressPhotos = false))
+        UserPreferences.saveProfile(context, "Временный профиль", "/tmp/avatar.jpg")
+
+        UserPreferences.clearProfile(context)
+
+        assertNull(UserPreferences.profileFlow(context).first())
+        assertEquals(AppThemeMode.DARK, UserPreferences.themeModeFlow(context).first())
+        assertEquals(PhotoPreferences(false, false), UserPreferences.photoPreferencesFlow(context).first())
+    }
 }

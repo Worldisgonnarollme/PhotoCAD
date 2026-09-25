@@ -28,6 +28,7 @@ data class Point(
     val drawingId: Long,
     val x: Float,
     val y: Float,
+    @ColumnInfo(defaultValue = "1") val pageNumber: Int = 1,
     @ColumnInfo(defaultValue = "''") val comment: String = "",
     @ColumnInfo(defaultValue = "0") val colorIndex: Int = 0
 )
