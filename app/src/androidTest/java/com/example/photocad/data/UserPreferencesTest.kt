@@ -12,8 +12,10 @@ import org.junit.Test
 class UserPreferencesTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-    @Before fun clear() = runBlocking { context.userDataStore.edit { it.clear() } }
-    @After fun cleanup() = runBlocking { context.userDataStore.edit { it.clear() } }
+    // Return type is spelled out: JUnit rejects the whole class unless @Before/@After are void,
+    // and `edit {}` returns Preferences, so an inferred expression body would not be.
+    @Before fun clear(): Unit = runBlocking { context.userDataStore.edit { it.clear() } }
+    @After fun cleanup(): Unit = runBlocking { context.userDataStore.edit { it.clear() } }
 
     @Test fun noProfileUntilSaved() = runBlocking {
         assertNull(UserPreferences.profileFlow(context).first())
