@@ -12,7 +12,8 @@ data class PdfPhoto(
     val drawingPath: String = filePath,
     val drawingName: String = "Чертёж",
     val pointX: Float = 0.5f,
-    val pointY: Float = 0.5f
+    val pointY: Float = 0.5f,
+    val colorIndex: Int = 0
 )
 data class GeneratedReport(val file: File, val photoCount: Int, val pageCount: Int)
 class ReportException(message: String, cause: Throwable? = null) : IOException(message, cause)
@@ -28,8 +29,18 @@ data class DraftPhoto(
     val drawingPath: String = filePath,
     val drawingName: String = "Чертёж",
     val pointX: Float = 0.5f,
-    val pointY: Float = 0.5f
+    val pointY: Float = 0.5f,
+    val colorIndex: Int = 0,
+    val captionSource: CaptionSource = CaptionSource.MISSING
 )
+
+enum class CaptionSource { PHOTO_DESCRIPTION, POINT_COMMENT, MISSING }
+
+fun captionSource(individual: String?, pointComment: String): CaptionSource = when {
+    !individual.isNullOrBlank() -> CaptionSource.PHOTO_DESCRIPTION
+    pointComment.isNotBlank() -> CaptionSource.POINT_COMMENT
+    else -> CaptionSource.MISSING
+}
 
 fun movePhoto(photos: List<DraftPhoto>, id: Long, delta: Int): List<DraftPhoto> {
     val from = photos.indexOfFirst { it.photoId == id }
@@ -42,7 +53,7 @@ fun movePhoto(photos: List<DraftPhoto>, id: Long, delta: Int): List<DraftPhoto> 
 fun reportInput(photos: List<DraftPhoto>): List<PdfPhoto> =
     photos.filter { it.selected }.map {
         PdfPhoto(it.filePath, it.description, it.pointNumber, it.drawingPage,
-            it.drawingPath, it.drawingName, it.pointX, it.pointY)
+            it.drawingPath, it.drawingName, it.pointX, it.pointY, it.colorIndex)
     }
 
 fun reportPointOrdinals(photos: List<DraftPhoto>): List<DraftPhoto> {
