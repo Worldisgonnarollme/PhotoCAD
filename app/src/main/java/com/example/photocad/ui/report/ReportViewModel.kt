@@ -76,11 +76,13 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
                             pointX = row.x, pointY = row.y, colorIndex = row.colorIndex,
                             captionSource = captionSource(row.description, row.pointComment))
                     }
-                    Triple(drawing, site, photos)
+                    val details = site?.let { db.siteDao().getReportDetails(it.id) }
+                    Triple(drawing, site to details, photos)
                 }
-                val (drawing, site, photos) = loaded
-                val cover = AlbumCover(objectName = site?.name ?: drawing.name,
-                    objectAddress = site?.address.orEmpty(), year = Calendar.getInstance().get(Calendar.YEAR).toString())
+                val (drawing, siteAndDetails, photos) = loaded
+                val (site, details) = siteAndDetails
+                val cover = albumCoverForSite(site, drawing.name, details,
+                    Calendar.getInstance().get(Calendar.YEAR).toString())
                 updateSession(session) { it.copy(initialized = true, loading = false, drawingName = drawing.name,
                     photos = photos, cover = cover) }
             } catch (cancelled: CancellationException) { throw cancelled }

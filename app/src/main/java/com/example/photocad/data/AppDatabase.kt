@@ -19,6 +19,10 @@ interface SiteDao {
     @Insert suspend fun insert(site: Site): Long
     @Query("SELECT * FROM sites") fun getAll(): Flow<List<Site>>
     @Query("SELECT * FROM sites WHERE id = :id") suspend fun getById(id: Long): Site?
+    @Query("SELECT * FROM site_report_details WHERE siteId = :siteId")
+    suspend fun getReportDetails(siteId: Long): SiteReportDetails?
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveReportDetails(details: SiteReportDetails)
     @Query("UPDATE sites SET name = :name, address = :address, description = :description WHERE id = :id")
     suspend fun update(id: Long, name: String, address: String, description: String): Int
     @Query("DELETE FROM sites WHERE id = :id") suspend fun delete(id: Long)
@@ -117,7 +121,7 @@ interface PhotoDao {
     suspend fun getReportRows(drawingId: Long): List<ReportPhotoRow>
 }
 
-@Database(entities = [Site::class, Drawing::class, Point::class, Photo::class], version = 7, exportSchema = true)
+@Database(entities = [Site::class, SiteReportDetails::class, Drawing::class, Point::class, Photo::class], version = 8, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun siteDao(): SiteDao
     abstract fun drawingDao(): DrawingDao
@@ -132,7 +136,8 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(
                         DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3,
                         DatabaseMigrations.MIGRATION_3_4, DatabaseMigrations.MIGRATION_4_5,
-                        DatabaseMigrations.MIGRATION_5_6, DatabaseMigrations.MIGRATION_6_7
+                        DatabaseMigrations.MIGRATION_5_6, DatabaseMigrations.MIGRATION_6_7,
+                        DatabaseMigrations.MIGRATION_7_8
                     )
                     .build().also { INSTANCE = it }
             }

@@ -46,4 +46,18 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE points ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0")
         }
     }
+
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""CREATE TABLE IF NOT EXISTS site_report_details (
+                siteId INTEGER NOT NULL PRIMARY KEY,
+                organizationName TEXT NOT NULL DEFAULT '', organizationAddress TEXT NOT NULL DEFAULT '',
+                phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
+                inn TEXT NOT NULL DEFAULT '', kpp TEXT NOT NULL DEFAULT '', ogrn TEXT NOT NULL DEFAULT '',
+                customer TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '',
+                year TEXT NOT NULL DEFAULT '', albumNumber TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY(siteId) REFERENCES sites(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )""".trimIndent())
+        }
+    }
 }

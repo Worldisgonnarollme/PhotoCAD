@@ -2,6 +2,7 @@ package com.example.photocad.data
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -11,6 +12,26 @@ data class Site(
     val name: String,
     @ColumnInfo(defaultValue = "''") val address: String = "",
     @ColumnInfo(defaultValue = "''") val description: String = ""
+)
+
+/** Optional defaults for an album cover. A report may override every value. */
+@Entity(
+    tableName = "site_report_details",
+    foreignKeys = [ForeignKey(entity = Site::class, parentColumns = ["id"], childColumns = ["siteId"], onDelete = ForeignKey.CASCADE)]
+)
+data class SiteReportDetails(
+    @PrimaryKey val siteId: Long,
+    @ColumnInfo(defaultValue = "''") val organizationName: String = "",
+    @ColumnInfo(defaultValue = "''") val organizationAddress: String = "",
+    @ColumnInfo(defaultValue = "''") val phone: String = "",
+    @ColumnInfo(defaultValue = "''") val email: String = "",
+    @ColumnInfo(defaultValue = "''") val inn: String = "",
+    @ColumnInfo(defaultValue = "''") val kpp: String = "",
+    @ColumnInfo(defaultValue = "''") val ogrn: String = "",
+    @ColumnInfo(defaultValue = "''") val customer: String = "",
+    @ColumnInfo(defaultValue = "''") val city: String = "",
+    @ColumnInfo(defaultValue = "''") val year: String = "",
+    @ColumnInfo(defaultValue = "''") val albumNumber: String = ""
 )
 
 @Entity(tableName = "drawings", indices = [Index("siteId")])

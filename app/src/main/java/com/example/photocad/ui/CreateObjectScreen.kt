@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +29,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
 
+private val reportDetailsSaver = listSaver<SiteReportDetails, String>(
+    save = { listOf(it.siteId.toString(), it.organizationName, it.organizationAddress, it.phone, it.email,
+        it.inn, it.kpp, it.ogrn, it.customer, it.city, it.year, it.albumNumber) },
+    restore = { SiteReportDetails(it[0].toLong(), it[1], it[2], it[3], it[4], it[5], it[6], it[7], it[8], it[9], it[10], it[11]) }
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSaved: () -> Unit) {
@@ -37,9 +44,25 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
     var name by rememberSaveable { mutableStateOf(editing?.name ?: "") }
     var address by rememberSaveable { mutableStateOf(editing?.address ?: "") }
     var description by rememberSaveable { mutableStateOf(editing?.description ?: "") }
+    var reportDetails by rememberSaveable(editing?.id, stateSaver = reportDetailsSaver) {
+        mutableStateOf(SiteReportDetails(editing?.id ?: 0))
+    }
+    var showReportDetails by rememberSaveable(editing?.id) { mutableStateOf(editing == null) }
+    var skipReportDetails by rememberSaveable(editing?.id) { mutableStateOf(false) }
+    var detailsLoaded by rememberSaveable(editing?.id) { mutableStateOf(editing == null) }
     var pendingBlueprints by rememberSaveable { mutableStateOf(listOf<String>()) }
     var importError by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf(false) }
+
+    LaunchedEffect(editing?.id) {
+        if (!detailsLoaded) editing?.let { site ->
+            db.siteDao().getReportDetails(site.id)?.let { saved ->
+                reportDetails = saved
+                showReportDetails = true
+            }
+            detailsLoaded = true
+        }
+    }
 
     val pickBlueprint = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -95,6 +118,44 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
                 }
             }
 
+            item {
+                if (showReportDetails) {
+                    SectionCard {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Данные для титульного листа", style = MaterialTheme.typography.titleMedium)
+                            Text("Сохраняются у объекта как значения по умолчанию. В каждом фотоальбоме их можно изменить.",
+                                style = MaterialTheme.typography.bodySmall)
+                            if (editing == null) {
+                                TextButton(onClick = { skipReportDetails = true; showReportDetails = false }) {
+                                    Text("Пропустить, заполнить в отчёте")
+                                }
+                            } else {
+                                TextButton(onClick = { showReportDetails = false }) { Text("Свернуть") }
+                            }
+                            @Composable fun field(label: String, value: String, change: (String) -> SiteReportDetails) {
+                                OutlinedTextField(value = value, onValueChange = { reportDetails = change(it) },
+                                    label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            }
+                            field("Название организации", reportDetails.organizationName) { reportDetails.copy(organizationName = it) }
+                            field("Адрес организации", reportDetails.organizationAddress) { reportDetails.copy(organizationAddress = it) }
+                            field("Телефон", reportDetails.phone) { reportDetails.copy(phone = it) }
+                            field("E-mail", reportDetails.email) { reportDetails.copy(email = it) }
+                            field("ИНН", reportDetails.inn) { reportDetails.copy(inn = it) }
+                            field("КПП", reportDetails.kpp) { reportDetails.copy(kpp = it) }
+                            field("ОГРН", reportDetails.ogrn) { reportDetails.copy(ogrn = it) }
+                            field("Заказчик", reportDetails.customer) { reportDetails.copy(customer = it) }
+                            field("Город", reportDetails.city) { reportDetails.copy(city = it) }
+                            field("Год", reportDetails.year) { reportDetails.copy(year = it) }
+                            field("Номер фотоальбома", reportDetails.albumNumber) { reportDetails.copy(albumNumber = it) }
+                        }
+                    }
+                } else {
+                    OutlinedButton(onClick = { skipReportDetails = false; showReportDetails = true }) {
+                        Text(if (editing == null) "Заполнить данные титульного листа" else "Изменить данные титульного листа")
+                    }
+                }
+            }
+
             if (editing == null) {
                 item {
                     SectionCard {
@@ -141,6 +202,7 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
                                 try {
                                     db.withTransaction {
                                         val siteId = db.siteDao().insert(Site(name = name.trim(), address = address.trim(), description = description.trim()))
+                                        if (!skipReportDetails) db.siteDao().saveReportDetails(reportDetails.copy(siteId = siteId))
                                         paths.forEachIndexed { index, path ->
                                             db.drawingDao().insert(Drawing(name = "Чертёж ${index + 1}", filePath = path, siteId = siteId))
                                         }
@@ -155,8 +217,15 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
                                     importError = "Не удалось создать объект: ${failure.message}"
                                 }
                             } else {
-                                db.siteDao().update(editing.id, name.trim(), address.trim(), description.trim())
-                                onSaved()
+                                try {
+                                    db.withTransaction {
+                                        db.siteDao().update(editing.id, name.trim(), address.trim(), description.trim())
+                                        if (showReportDetails) db.siteDao().saveReportDetails(reportDetails.copy(siteId = editing.id))
+                                    }
+                                    onSaved()
+                                } catch (failure: Exception) {
+                                    importError = "Не удалось сохранить объект: ${failure.message}"
+                                }
                             }
                         }
                     }
