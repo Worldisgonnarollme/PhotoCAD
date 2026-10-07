@@ -40,4 +40,10 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE points ADD COLUMN pageNumber INTEGER NOT NULL DEFAULT 1")
         }
     }
+
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE points ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }

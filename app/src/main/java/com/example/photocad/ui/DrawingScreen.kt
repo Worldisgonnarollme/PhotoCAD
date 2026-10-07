@@ -38,10 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.example.photocad.data.*
 import kotlinx.coroutines.launch
 
-val pointColors = listOf(
-    Color(0xFFF44336), Color(0xFF2196F3), Color(0xFF4CAF50),
-    Color(0xFFFF9800), Color(0xFF9C27B0), Color(0xFF9E9E9E)
-)
+val pointColors = (0 until PointColors.size).map { Color(PointColors.argb(it)) }
 
 private const val MIN_SCALE = 1f
 private const val MAX_SCALE = 3f

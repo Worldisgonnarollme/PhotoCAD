@@ -8,7 +8,7 @@ public final class ReportRules {
         return count;
     }
     public static String description(String individual, String pointComment) {
-        return individual != null ? individual : pointComment;
+        return individual != null && !individual.trim().isEmpty() ? individual : pointComment;
     }
     public static String caption(int number, String description) {
         if (number < 1) throw new IllegalArgumentException("Invalid photo number");

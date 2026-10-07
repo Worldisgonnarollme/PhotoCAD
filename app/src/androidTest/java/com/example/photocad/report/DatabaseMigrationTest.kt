@@ -14,6 +14,39 @@ import java.security.MessageDigest
 
 class DatabaseMigrationTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    @Test fun versionSixUpgradePreservesColorAndPhotosAndAddsActiveState() = runBlocking {
+        val name = "migration-v6-${System.nanoTime()}.db"
+        try {
+            context.openOrCreateDatabase(name, 0, null).use { old ->
+                old.execSQL("CREATE TABLE sites (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, address TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '')")
+                old.execSQL("CREATE TABLE drawings (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, filePath TEXT NOT NULL, siteId INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '')")
+                old.execSQL("CREATE TABLE points (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, drawingId INTEGER NOT NULL, x REAL NOT NULL, y REAL NOT NULL, pageNumber INTEGER NOT NULL DEFAULT 1, comment TEXT NOT NULL DEFAULT '', colorIndex INTEGER NOT NULL DEFAULT 0)")
+                old.execSQL("CREATE TABLE photos (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, pointId INTEGER NOT NULL, filePath TEXT NOT NULL, description TEXT)")
+                old.execSQL("CREATE INDEX index_drawings_siteId ON drawings(siteId)")
+                old.execSQL("CREATE INDEX index_points_drawingId ON points(drawingId)")
+                old.execSQL("CREATE INDEX index_photos_pointId ON photos(pointId)")
+                old.execSQL("INSERT INTO sites VALUES(1, 'Объект', '', '')")
+                old.execSQL("INSERT INTO drawings VALUES(2, 'План', '/drawing.pdf', 1, '')")
+                old.execSQL("INSERT INTO points VALUES(3, 2, 0.3, 0.7, 2, 'Комментарий', 1)")
+                old.execSQL("INSERT INTO photos VALUES(4, 3, '/photo.jpg', 'Описание')")
+                old.version = 6
+            }
+            val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
+                .addMigrations(DatabaseMigrations.MIGRATION_6_7).build()
+            try {
+                val point = db.pointDao().getById(3)!!
+                assertEquals(1, point.colorIndex)
+                assertEquals(2, point.pageNumber)
+                assertEquals("Комментарий", point.comment)
+                assertFalse(point.isArchived)
+                assertEquals("Описание", db.photoDao().getByPoint(3).first().single().description)
+                db.pointDao().setArchived(3, true)
+                assertTrue(db.pointDao().getById(3)!!.isArchived)
+                assertTrue(db.pointDao().getByDrawingPage(2, 2).first().isEmpty())
+                assertEquals(1, db.pointDao().getByDrawing(2).first().size)
+            } finally { db.close() }
+        } finally { context.deleteDatabase(name) }
+    }
     @Test fun realV1UpgradePreservesPhotosAndValidatesRoomSchema() = runBlocking {
         val name = "migration-${System.nanoTime()}.db"
         val photoFile = File.createTempFile("legacy", ".jpg", context.filesDir)
@@ -34,7 +67,8 @@ class DatabaseMigrationTest {
             }
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3, DatabaseMigrations.MIGRATION_3_4,
-                    DatabaseMigrations.MIGRATION_4_5, DatabaseMigrations.MIGRATION_5_6).build()
+                    DatabaseMigrations.MIGRATION_4_5, DatabaseMigrations.MIGRATION_5_6,
+                    DatabaseMigrations.MIGRATION_6_7).build()
             try {
                 val point = db.pointDao().getById(10)!! // opening invokes migration + generated Room schema validation
                 assertEquals("", point.comment)
@@ -65,7 +99,8 @@ class DatabaseMigrationTest {
             } finally { db.close() }
             val reopened = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3, DatabaseMigrations.MIGRATION_3_4,
-                    DatabaseMigrations.MIGRATION_4_5, DatabaseMigrations.MIGRATION_5_6).build()
+                    DatabaseMigrations.MIGRATION_4_5, DatabaseMigrations.MIGRATION_5_6,
+                    DatabaseMigrations.MIGRATION_6_7).build()
             try { assertEquals("Явно сохранено", reopened.photoDao().getByPoint(10).first().first { it.id == 100L }.description) }
             finally { reopened.close() }
         } finally { context.deleteDatabase(name); photoFile.delete() }
@@ -89,7 +124,7 @@ class DatabaseMigrationTest {
                 old.version = 5
             }
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(DatabaseMigrations.MIGRATION_5_6).build()
+                .addMigrations(DatabaseMigrations.MIGRATION_5_6, DatabaseMigrations.MIGRATION_6_7).build()
             try {
                 val point = db.pointDao().getById(3)!!
                 assertEquals(2L, point.drawingId)

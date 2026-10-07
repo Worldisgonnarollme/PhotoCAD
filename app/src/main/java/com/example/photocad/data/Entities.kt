@@ -30,7 +30,8 @@ data class Point(
     val y: Float,
     @ColumnInfo(defaultValue = "1") val pageNumber: Int = 1,
     @ColumnInfo(defaultValue = "''") val comment: String = "",
-    @ColumnInfo(defaultValue = "0") val colorIndex: Int = 0
+    @ColumnInfo(defaultValue = "0") val colorIndex: Int = 0,
+    @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false
 )
 
 @Entity(tableName = "photos", indices = [Index("pointId")])
