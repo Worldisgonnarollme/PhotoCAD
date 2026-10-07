@@ -16,8 +16,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,7 +43,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -299,19 +296,6 @@ private fun PhotoTabContent(
     var pendingCameraPermissionResult by remember(point.id) { mutableStateOf<Boolean?>(null) }
     var pendingCameraReplaceId by rememberSaveable(point.id) { mutableStateOf<Long?>(null) }
     var photoToDelete by remember(point.id) { mutableStateOf<Long?>(null) }
-    var showAddChoices by remember(point.id) { mutableStateOf(false) }
-    val pagerState = rememberPagerState(pageCount = { photos.size })
-    val selectedPhoto = photos.getOrNull(pagerState.currentPage)
-    var previousPhotoIds by remember(point.id) { mutableStateOf(emptyList<Long>()) }
-    LaunchedEffect(photos.map { it.id }) {
-        val ids = photos.map { it.id }
-        val added = ids.lastOrNull { it !in previousPhotoIds }
-        when {
-            previousPhotoIds.isNotEmpty() && added != null -> pagerState.scrollToPage(ids.indexOf(added))
-            ids.isNotEmpty() && pagerState.currentPage >= ids.size -> pagerState.scrollToPage(ids.lastIndex)
-        }
-        previousPhotoIds = ids
-    }
 
     photoToDelete?.let { id ->
         AlertDialog(
@@ -402,16 +386,6 @@ private fun PhotoTabContent(
         }
     }
 
-    if (showAddChoices) {
-        AlertDialog(
-            onDismissRequest = { showAddChoices = false },
-            title = { Text("Добавить фотографию") },
-            text = { Text("Выберите, откуда добавить новый снимок к этой точке.") },
-            confirmButton = { TextButton(onClick = { showAddChoices = false; launchCamera(null) }) { Text("Камера") } },
-            dismissButton = { TextButton(onClick = { showAddChoices = false; launchGallery(null) }) { Text("Галерея") } }
-        )
-    }
-
     if (photos.isEmpty()) {
         SectionCard {
             Column(Modifier.padding(16.dp)) {
@@ -435,43 +409,41 @@ private fun PhotoTabContent(
             }
         }
     } else {
-        SectionCard {
-            Column(Modifier.padding(16.dp)) {
-                Text("Фото у точки: ${photos.size}. Каждое фото станет отдельной страницей фотоальбома.",
-                    style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(enabled = !busy && pendingCameraPath == null && selectedPhoto != null,
-                        onClick = { selectedPhoto?.let { launchCamera(it.id) } }, modifier = Modifier.weight(1f)) {
-                        Text("Переснять")
-                    }
-                    OutlinedButton(enabled = !busy && pendingCameraPath == null && selectedPhoto != null,
-                        onClick = { selectedPhoto?.let { launchGallery(it.id) } }, modifier = Modifier.weight(1f)) {
-                        Text("Из галереи")
-                    }
-                }
-                Text("Кнопки сверху заменяют открытую фотографию.", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(12.dp))
-                if (photos.size > 1) Text("Листайте фотографии влево и вправо", style = MaterialTheme.typography.bodySmall)
-                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().height(365.dp).testTag("pointPhotoPager")) { index ->
-                    val photo = photos[index]
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Фото ${index + 1} из ${photos.size}", style = MaterialTheme.typography.labelMedium)
-                            PhotoThumbnail(photo.filePath, Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp)))
-                            PhotoDescriptionEditor(photo.id, photo.description, point.comment, busy) { description ->
-                                onMessage(null)
-                                model.saveDescription(photo.id, description)
+        Text("Фото у точки: ${photos.size}. Каждое фото станет отдельной страницей фотоальбома.",
+            style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(12.dp))
+        photos.forEachIndexed { index, photo ->
+            key(photo.id) {
+                SectionCard {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            PhotoThumbnail(photo.filePath, Modifier.size(88.dp).clip(RoundedCornerShape(8.dp)))
+                            Column {
+                                Text("Фотография ${index + 1}", style = MaterialTheme.typography.titleMedium)
+                                Text("Фото ${index + 1} из ${photos.size}", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            TextButton(onClick = { photoToDelete = photo.id }, enabled = !busy) { Text("Удалить это фото") }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(enabled = !busy && pendingCameraPath == null,
+                                onClick = { launchCamera(photo.id) }, modifier = Modifier.weight(1f)) { Text("Переснять") }
+                            OutlinedButton(enabled = !busy && pendingCameraPath == null,
+                                onClick = { launchGallery(photo.id) }, modifier = Modifier.weight(1f)) { Text("Заменить из галереи") }
+                        }
+                        PhotoDescriptionEditor(photo.id, photo.description, point.comment, busy) { description ->
+                            onMessage(null)
+                            model.saveDescription(photo.id, description)
+                        }
+                        TextButton(onClick = { photoToDelete = photo.id }, enabled = !busy) { Text("Удалить это фото") }
                     }
                 }
+                Spacer(Modifier.height(12.dp))
             }
         }
-        Spacer(Modifier.height(10.dp))
-        OutlinedButton(onClick = { showAddChoices = true }, enabled = !busy && pendingCameraPath == null,
+        Button(onClick = { launchCamera(null) }, enabled = !busy && pendingCameraPath == null,
             modifier = Modifier.fillMaxWidth()) { Text("Добавить фото") }
+        OutlinedButton(onClick = { launchGallery(null) }, enabled = !busy && pendingCameraPath == null,
+            modifier = Modifier.fillMaxWidth()) { Text("Добавить из галереи") }
     }
 }
 

@@ -22,7 +22,7 @@ import java.io.File
 class PointPhotoPagerTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun photosOccupyOnePageWithSeparateRetakeAndAddActions() {
+    @Test fun existingPhotosAppearAsSeparateCardsWithDirectGalleryAdd() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         fun image(color: Int): File = File.createTempFile("pager", ".png", context.cacheDir).also { file ->
@@ -42,15 +42,11 @@ class PointPhotoPagerTest {
                 db.pointDao().getById(pointId)!!
             }
             compose.setContent { PhotoCADTheme(AppThemeMode.DARK) { PointEditorScreen(db, point, 1, true) {} } }
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Фото 1 из 2").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Фотография 1").fetchSemanticsNodes().isNotEmpty() }
             compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Фотография").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Переснять").assertExists()
-            compose.onNodeWithText("Добавить фото").assertExists()
-            compose.onNodeWithTag("pointPhotoPager").performTouchInput { swipeLeft() }
-            compose.onNodeWithText("Фото 2 из 2").assertIsDisplayed()
-            compose.onNodeWithText("Добавить фото").performScrollTo().performClick()
-            compose.onNodeWithText("Добавить фотографию").assertExists()
-            compose.onNodeWithText("Камера").assertExists()
+            compose.onNodeWithText("Фотография 2").assertExists()
+            compose.onAllNodesWithText("Переснять").assertCountEquals(2)
+            compose.onNodeWithText("Добавить из галереи").assertExists()
         } finally { db.close(); firstFile.delete(); secondFile.delete() }
     }
 }
