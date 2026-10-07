@@ -111,7 +111,8 @@ class PdfReportGeneratorTest {
         val photo = sourceWithColor("photo", Color.GREEN)
         val report = PdfReportGenerator().generate(
             listOf(PdfPhoto(photo.path, "Подпись", pointNumber = 3, drawingPage = 2,
-                drawingPath = drawing.path, drawingName = "План второго этажа", pointX = 0.5f, pointY = 0.5f)),
+                drawingPath = drawing.path, drawingName = "План второго этажа", pointX = 0.5f, pointY = 0.5f,
+                colorIndex = 1)),
             context.cacheDir
         )
         try {
@@ -121,8 +122,8 @@ class PdfReportGeneratorTest {
                     try {
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         assertEquals(Color.BLUE, bitmap.getPixel(297, 90))
-                        assertEquals(Color.RED, bitmap.getPixel(297, 153))
-                        assertEquals(Color.GREEN, bitmap.getPixel(297, 500))
+                        assertPdfColorNear(com.example.photocad.data.PointColors.argb(1), bitmap.getPixel(297, 153))
+                        assertPdfColorNear(Color.GREEN, bitmap.getPixel(297, 500))
                     } finally { bitmap.recycle() }
                 }
             }

@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import com.example.photocad.data.openDrawingDocument
+import com.example.photocad.data.PointColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -83,7 +84,7 @@ class PdfReportGenerator {
                                     style = Paint.Style.STROKE
                                     strokeWidth = 3f
                                 }
-                                val markerFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.RED }
+                                val markerFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PointColors.argb(photo.colorIndex) }
                                 canvas.drawCircle(markerCenterX, markerCenterY, 8f, markerOutline)
                                 canvas.drawCircle(markerCenterX, markerCenterY, 6f, markerFill)
                                 canvas.drawRect(drawingFrame, framePaint)
