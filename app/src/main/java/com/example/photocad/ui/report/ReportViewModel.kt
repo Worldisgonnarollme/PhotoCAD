@@ -15,6 +15,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Calendar
+
+enum class ReportType { PHOTO_ALBUM, SIMPLE }
+enum class ReportStep { TYPE, COVER, PHOTOS, PREVIEW, COMPLETE }
 
 data class ReportUiState(
     val session: Long = 0,
@@ -22,15 +26,23 @@ data class ReportUiState(
     val loading: Boolean = false,
     val drawingName: String = "",
     val photos: List<DraftPhoto> = emptyList(),
+    val reportType: ReportType = ReportType.PHOTO_ALBUM,
+    val step: ReportStep = ReportStep.TYPE,
+    val cover: AlbumCover = AlbumCover(),
     val operation: String? = null,
     val progress: Int = 0,
     val total: Int = 0,
     val generated: GeneratedReport? = null,
+    val generatedPhotoIds: Set<Long> = emptySet(),
+    val generatedPointIds: Set<Long> = emptySet(),
+    val saved: Boolean = false,
+    val archiveDecisionDone: Boolean = false,
     val message: String? = null
 ) {
     val busy get() = loading || operation != null
     val selectedCount get() = photos.count { it.selected }
-    val pageCount get() = ReportRules.pageCount(selectedCount)
+    val missingCaptionCount get() = photos.count { it.selected && it.description.isBlank() }
+    val pageCount get() = selectedCount + if (reportType == ReportType.PHOTO_ALBUM) 2 else 0
 }
 
 class ReportViewModel(application: Application, private val db: AppDatabase, private val drawingId: Long) : AndroidViewModel(application) {
@@ -49,26 +61,80 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         job = viewModelScope.launch {
             try {
                 ReportFileManager.cleanOldCache(getApplication())
-                val (drawing, rows) = db.withTransaction {
+                val loaded = db.withTransaction {
                     val drawing = db.drawingDao().getById(drawingId) ?: throw ReportException("Чертёж недоступен")
-                    drawing to db.photoDao().getReportRows(drawingId)
+                    val site = db.siteDao().getById(drawing.siteId)
+                    val points = db.pointDao().getActiveByDrawing(drawingId)
+                    val ordinals = points.groupBy { it.pageNumber }.values.flatMap { page ->
+                        page.mapIndexed { index, point -> point.id to (index + 1) }
+                    }.toMap()
+                    val photos = db.photoDao().getReportRows(drawingId).map { row ->
+                        DraftPhoto(row.photoId, row.pointId, row.filePath,
+                            ReportRules.description(row.description, row.pointComment),
+                            drawingPage = row.pageNumber, pointNumber = ordinals[row.pointId] ?: 1,
+                            drawingPath = drawing.filePath, drawingName = drawing.name,
+                            pointX = row.x, pointY = row.y, colorIndex = row.colorIndex,
+                            captionSource = captionSource(row.description, row.pointComment))
+                    }
+                    Triple(drawing, site, photos)
                 }
+                val (drawing, site, photos) = loaded
+                val cover = AlbumCover(objectName = site?.name ?: drawing.name,
+                    objectAddress = site?.address.orEmpty(), year = Calendar.getInstance().get(Calendar.YEAR).toString())
                 updateSession(session) { it.copy(initialized = true, loading = false, drawingName = drawing.name,
-                    photos = reportPointOrdinals(rows.map { row -> DraftPhoto(row.photoId, row.pointId, row.filePath,
-                        ReportRules.description(row.description, row.pointComment), drawingPage = row.pageNumber,
-                        drawingPath = drawing.filePath, drawingName = drawing.name, pointX = row.x, pointY = row.y) })) }
+                    photos = photos, cover = cover) }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) { updateSession(session) { it.copy(loading = false, message = failure.message ?: "Не удалось загрузить фотографии") } }
+            catch (failure: Exception) {
+                updateSession(session) { it.copy(loading = false, message = failure.message ?: "Не удалось загрузить фотографии") }
+            }
         }
     }
 
+    private fun invalidate(state: ReportUiState): ReportUiState = state.copy(
+        generated = null, generatedPhotoIds = emptySet(), generatedPointIds = emptySet(),
+        saved = false, archiveDecisionDone = false, message = null)
+
     private fun change(transform: (List<DraftPhoto>) -> List<DraftPhoto>) {
-        if (mutable.value.busy) return
-        mutable.update { it.copy(photos = transform(it.photos), generated = null, message = null) }
+        if (mutable.value.busy || mutable.value.saved) return
+        mutable.update { invalidate(it.copy(photos = transform(it.photos))) }
     }
     fun edit(id: Long, text: String) = change { rows -> rows.map { if (it.photoId == id) it.copy(description = text) else it } }
     fun select(id: Long, selected: Boolean) = change { rows -> rows.map { if (it.photoId == id) it.copy(selected = selected) else it } }
     fun move(id: Long, delta: Int) = change { movePhoto(it, id, delta) }
+
+    fun chooseType(type: ReportType) {
+        if (mutable.value.busy || mutable.value.saved) return
+        mutable.update { invalidate(it.copy(reportType = type)) }
+    }
+    fun editCover(cover: AlbumCover) {
+        if (mutable.value.busy || mutable.value.saved) return
+        mutable.update { invalidate(it.copy(cover = cover)) }
+    }
+    fun next() {
+        if (mutable.value.busy || !mutable.value.initialized) return
+        mutable.update { current ->
+            when (current.step) {
+                ReportStep.TYPE -> current.copy(step = if (current.reportType == ReportType.PHOTO_ALBUM) ReportStep.COVER else ReportStep.PHOTOS)
+                ReportStep.COVER -> current.copy(step = ReportStep.PHOTOS)
+                ReportStep.PHOTOS -> when {
+                    current.selectedCount == 0 -> current.copy(message = "Выберите хотя бы одну фотографию")
+                    current.reportType == ReportType.PHOTO_ALBUM && current.missingCaptionCount > 0 ->
+                        current.copy(message = "У ${current.missingCaptionCount} фотографий отсутствует описание")
+                    else -> current.copy(step = ReportStep.PREVIEW, message = null)
+                }
+                else -> current
+            }
+        }
+    }
+    fun previous() {
+        if (mutable.value.busy || mutable.value.saved) return
+        mutable.update { current -> current.copy(step = when (current.step) {
+            ReportStep.COVER -> ReportStep.TYPE
+            ReportStep.PHOTOS -> if (current.reportType == ReportType.PHOTO_ALBUM) ReportStep.COVER else ReportStep.TYPE
+            ReportStep.PREVIEW -> ReportStep.PHOTOS
+            else -> current.step
+        }, message = null) }
+    }
 
     fun saveDescription(id: Long) {
         if (mutable.value.busy) return
@@ -78,7 +144,9 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         job = viewModelScope.launch {
             try {
                 if (db.photoDao().updateDescription(id, photo.description) != 1) throw ReportException("Фотография недоступна")
-                updateSession(session) { it.copy(message = "Описание фотографии сохранено в базе") }
+                updateSession(session) { current -> current.copy(
+                    photos = current.photos.map { if (it.photoId == id) it.copy(captionSource = CaptionSource.PHOTO_DESCRIPTION) else it },
+                    message = "Описание фотографии сохранено в базе") }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { updateSession(session) { it.copy(message = failure.message ?: "Не удалось сохранить описание") } }
             finally { updateSession(session) { it.copy(operation = null) } }
@@ -86,17 +154,31 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
     }
 
     fun generate() {
-        if (mutable.value.busy) return
-        val input = reportInput(mutable.value.photos)
+        val current = mutable.value
+        if (current.busy || current.step != ReportStep.PREVIEW) return
+        val input = reportInput(current.photos)
         if (input.isEmpty()) { showMessage("Выберите хотя бы одну фотографию"); return }
-        mutable.update { it.copy(operation = "Формирование PDF", progress = 0, total = input.size, generated = null, message = null) }
+        if (current.reportType == ReportType.PHOTO_ALBUM && input.any { it.description.isBlank() }) {
+            showMessage("Заполните отсутствующие описания фотографий"); return
+        }
+        val cover = current.cover
+        val type = current.reportType
+        val selected = current.photos.filter { it.selected }
+        mutable.update { it.copy(operation = "Формирование PDF", progress = 0, total = input.size,
+            generated = null, saved = false, message = null) }
         val session = mutable.value.session
         job = viewModelScope.launch {
             try {
-                val result = PdfReportGenerator().generate(input, ReportFileManager.directory(getApplication())) { done, total ->
+                val progress: (Int, Int) -> Unit = { done, total ->
                     updateSession(session) { it.copy(progress = done, total = total) }
                 }
-                updateSession(session) { it.copy(generated = result, message = "PDF сформирован. Доступен предварительный просмотр.") }
+                val result = if (type == ReportType.PHOTO_ALBUM)
+                    PhotoAlbumGenerator(getApplication()).generate(PhotoAlbumInput(cover, input), ReportFileManager.directory(getApplication()), progress)
+                else PdfReportGenerator().generate(input, ReportFileManager.directory(getApplication()), progress)
+                updateSession(session) { it.copy(generated = result,
+                    generatedPhotoIds = selected.mapTo(mutableSetOf()) { photo -> photo.photoId },
+                    generatedPointIds = selected.mapTo(mutableSetOf()) { photo -> photo.pointId },
+                    message = "PDF сформирован. Проверьте страницы и сохраните файл.") }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { updateSession(session) { it.copy(message = failure.message ?: "Ошибка формирования PDF") } }
             finally { updateSession(session) { it.copy(operation = null) } }
@@ -112,14 +194,41 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         job = viewModelScope.launch {
             try {
                 ReportFileManager.save(getApplication(), result.file, uri)
-                updateSession(session) { it.copy(message = "PDF сохранён") }
+                updateSession(session) { it.copy(saved = true,
+                    step = if (it.reportType == ReportType.PHOTO_ALBUM) ReportStep.COMPLETE else it.step,
+                    message = if (it.reportType == ReportType.PHOTO_ALBUM) "Фотоальбом успешно сохранён" else "PDF сохранён") }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) {
-                updateSession(session) { it.copy(message = "Не удалось сохранить PDF: ${failure.message}. Готовый PDF сохранён временно для повтора. Проверьте выбранную папку: провайдер мог оставить незавершённый файл.") }
+                updateSession(session) { it.copy(message = "Не удалось сохранить PDF: ${failure.message}. Повторите сохранение.") }
             } finally { updateSession(session) { it.copy(operation = null) } }
         }
     }
 
+    fun archiveUsedPoints() {
+        val current = mutable.value
+        if (current.busy || !current.saved || current.archiveDecisionDone || current.reportType != ReportType.PHOTO_ALBUM) return
+        val included = current.generatedPhotoIds
+        val pointIds = current.generatedPointIds
+        mutable.update { it.copy(operation = "Архивирование точек", message = null) }
+        val session = current.session
+        job = viewModelScope.launch {
+            try {
+                val count = db.withTransaction {
+                    val attached = pointIds.associateWith { db.photoDao().getIdsByPoint(it).toSet() }
+                    val eligible = eligibleArchivePointIds(attached, included)
+                    eligible.sumOf { db.pointDao().setArchived(it, true) }
+                }
+                updateSession(session) { it.copy(archiveDecisionDone = true,
+                    message = "Архивировано точек: $count. Точки с не включёнными фотографиями остались активными.") }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { updateSession(session) { it.copy(message = "Не удалось архивировать точки: ${failure.message}") } }
+            finally { updateSession(session) { it.copy(operation = null) } }
+        }
+    }
+
+    fun leavePointsActive() {
+        if (mutable.value.saved && !mutable.value.busy) mutable.update { it.copy(archiveDecisionDone = true, message = "Точки оставлены активными") }
+    }
     fun cancelGeneration() {
         if (mutable.value.operation != "Формирование PDF") return
         job?.cancel()

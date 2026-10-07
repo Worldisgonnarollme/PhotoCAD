@@ -27,6 +27,9 @@ class ReportEditingTest {
             }
             var exited = false
             compose.setContent { MaterialTheme { ReportScreen(db, ids.first) { exited = true } } }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Выберите тип документа").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Продолжить").performClick()
+            compose.onNodeWithText("Продолжить").performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("Описание для текущего PDF").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Описание для текущего PDF").performTextReplacement("Временно")
             assertEquals("Исходное", runBlocking { db.photoDao().getByPoint(ids.second).first().single().description })
@@ -37,6 +40,25 @@ class ReportEditingTest {
             compose.onNodeWithText("Закрыть", useUnmergedTree = true).performClick()
             compose.runOnIdle { assertTrue(exited) }
             assertEquals("Временно", runBlocking { db.photoDao().getByPoint(ids.second).first().single().description })
+        } finally { db.close() }
+    }
+
+    @Test fun missingCaptionIsVisibleBeforeGeneration() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val drawingId = runBlocking {
+                val drawing = db.drawingDao().insert(Drawing(name = "Без подписи", filePath = "drawing", siteId = 1))
+                val point = db.pointDao().insert(Point(drawingId = drawing, x = 0.5f, y = 0.5f))
+                db.photoDao().insert(Photo(pointId = point, filePath = "image", description = ""))
+                drawing
+            }
+            compose.setContent { MaterialTheme { ReportScreen(db, drawingId) {} } }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Выберите тип документа").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Продолжить").performClick()
+            compose.onNodeWithText("Продолжить").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Описание отсутствует").fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(compose.onAllNodesWithText("Описание отсутствует").fetchSemanticsNodes().isNotEmpty())
         } finally { db.close() }
     }
 }
