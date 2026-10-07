@@ -44,9 +44,11 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
         }
     }
 
-    private suspend fun attach(path: String, preferences: PhotoPreferences, allowGallery: Boolean, cameraSource: String? = null): String? {
+    private suspend fun attach(path: String, preferences: PhotoPreferences, allowGallery: Boolean,
+                               cameraSource: String? = null, replacePhotoId: Long? = null): String? {
         withContext(Dispatchers.IO) { ReportImageLoader.load(path, 320).recycle() }
-        db.insertPhotoWithComment(pointId, path)
+        if (replacePhotoId == null) db.insertPhotoWithComment(pointId, path)
+        else db.replacePhotoFile(replacePhotoId, pointId, path)
         var galleryWarning: String? = null
         if (preferences.saveToGallery) {
             if (!allowGallery) {
@@ -62,42 +64,48 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
         return galleryWarning
     }
 
-    fun importGallery(uri: Uri, allowGallery: Boolean = true) = perform("Фотография добавлена") {
+    private suspend fun discardUnreferenced(path: String, cameraSource: String? = null) {
+        withContext(NonCancellable + Dispatchers.IO) {
+            if (db.photoDao().countByFilePath(path) == 0) File(path).delete()
+            if (cameraSource != null && cameraSource != path) File(cameraSource).delete()
+        }
+    }
+
+    fun importGallery(uri: Uri, allowGallery: Boolean = true, replacePhotoId: Long? = null) =
+        perform(if (replacePhotoId == null) "Фотография добавлена" else "Фотография заменена") {
         val preferences = UserPreferences.photoPreferencesFlow(getApplication()).first()
         val storedPath = importPhoto(getApplication(), uri, preferences)
         try {
-            attach(storedPath, preferences, allowGallery)
+            attach(storedPath, preferences, allowGallery, replacePhotoId = replacePhotoId)
         } catch (cancelled: CancellationException) {
-            val referenced = withContext(NonCancellable + Dispatchers.IO) { db.photoDao().countByFilePath(storedPath) > 0 }
-            if (!referenced) withContext(NonCancellable + Dispatchers.IO) { File(storedPath).delete() }
+            discardUnreferenced(storedPath)
             throw cancelled
         } catch (failure: Exception) {
-            withContext(Dispatchers.IO) { File(storedPath).delete() }
+            discardUnreferenced(storedPath)
             throw failure
         }
     }
 
-    fun cameraResult(path: String, success: Boolean, allowGallery: Boolean = true) {
+    fun cameraResult(path: String, success: Boolean, allowGallery: Boolean = true, replacePhotoId: Long? = null) {
         if (mutable.value.busy || path == activeCameraPath || path == mutable.value.completedCameraPath) return
         activeCameraPath = path
-        perform(if (success) "Фотография добавлена" else "Съёмка отменена", path) {
+        perform(if (!success) "Съёмка отменена" else if (replacePhotoId == null) "Фотография добавлена" else "Фотография переснята", path) {
             if (success) {
                 val preferences = UserPreferences.photoPreferencesFlow(getApplication()).first()
-                val storedPath = storeCameraPhoto(getApplication(), path, preferences)
-                try { attach(storedPath, preferences, allowGallery, cameraSource = path) }
+                var storedPath: String? = null
+                try {
+                    val ready = storeCameraPhoto(getApplication(), path, preferences)
+                    storedPath = ready
+                    attach(ready, preferences, allowGallery, cameraSource = path, replacePhotoId = replacePhotoId)
+                }
                 catch (cancelled: CancellationException) {
-                    val referenced = withContext(NonCancellable + Dispatchers.IO) { db.photoDao().countByFilePath(storedPath) > 0 }
-                    withContext(NonCancellable + Dispatchers.IO) {
-                        if (!referenced && storedPath != path) File(storedPath).delete()
-                        if (referenced || storedPath != path) File(path).delete()
-                    }
+                    if (storedPath == null) withContext(NonCancellable + Dispatchers.IO) { File(path).delete() }
+                    else discardUnreferenced(storedPath, path)
                     throw cancelled
                 }
                 catch (failure: Exception) {
-                    withContext(Dispatchers.IO) {
-                        if (storedPath != path) File(storedPath).delete()
-                        File(path).delete()
-                    }
+                    if (storedPath == null) withContext(NonCancellable + Dispatchers.IO) { File(path).delete() }
+                    else discardUnreferenced(storedPath, path)
                     throw failure
                 }
             } else {

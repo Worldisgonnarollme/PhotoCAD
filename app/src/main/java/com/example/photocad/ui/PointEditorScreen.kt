@@ -16,8 +16,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,6 +45,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -294,8 +295,23 @@ private fun PhotoTabContent(
     var pendingCameraPath by rememberSaveable(point.id) { mutableStateOf<String?>(null) }
     val preferences by UserPreferences.photoPreferencesFlow(context).collectAsState(initial = PhotoPreferences())
     var pendingGalleryUri by remember(point.id) { mutableStateOf<android.net.Uri?>(null) }
+    var pendingGalleryReplaceId by rememberSaveable(point.id) { mutableStateOf<Long?>(null) }
     var pendingCameraPermissionResult by remember(point.id) { mutableStateOf<Boolean?>(null) }
+    var pendingCameraReplaceId by rememberSaveable(point.id) { mutableStateOf<Long?>(null) }
     var photoToDelete by remember(point.id) { mutableStateOf<Long?>(null) }
+    var showAddChoices by remember(point.id) { mutableStateOf(false) }
+    val pagerState = rememberPagerState(pageCount = { photos.size })
+    val selectedPhoto = photos.getOrNull(pagerState.currentPage)
+    var previousPhotoIds by remember(point.id) { mutableStateOf(emptyList<Long>()) }
+    LaunchedEffect(photos.map { it.id }) {
+        val ids = photos.map { it.id }
+        val added = ids.lastOrNull { it !in previousPhotoIds }
+        when {
+            previousPhotoIds.isNotEmpty() && added != null -> pagerState.scrollToPage(ids.indexOf(added))
+            ids.isNotEmpty() && pagerState.currentPage >= ids.size -> pagerState.scrollToPage(ids.lastIndex)
+        }
+        previousPhotoIds = ids
+    }
 
     photoToDelete?.let { id ->
         AlertDialog(
@@ -310,16 +326,20 @@ private fun PhotoTabContent(
     val requestGalleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         pendingGalleryUri?.let { uri ->
             pendingGalleryUri = null
+            val replaceId = pendingGalleryReplaceId
+            pendingGalleryReplaceId = null
             onMessage(null)
-            model.importGallery(uri, allowGallery = granted)
+            model.importGallery(uri, allowGallery = granted, replacePhotoId = replaceId)
         }
         val cameraResult = pendingCameraPermissionResult
         val cameraPath = pendingCameraPath
         if (cameraResult != null && cameraPath != null) {
+            val replaceId = pendingCameraReplaceId
             pendingCameraPermissionResult = null
             pendingCameraPath = null
+            pendingCameraReplaceId = null
             onMessage(null)
-            model.cameraResult(cameraPath, cameraResult, allowGallery = granted)
+            model.cameraResult(cameraPath, cameraResult, allowGallery = granted, replacePhotoId = replaceId)
         }
     }
 
@@ -332,9 +352,19 @@ private fun PhotoTabContent(
                 pendingGalleryUri = uri
                 requestGalleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             } else {
+                val replaceId = pendingGalleryReplaceId
+                pendingGalleryReplaceId = null
                 onMessage(null)
-                model.importGallery(uri)
+                model.importGallery(uri, replacePhotoId = replaceId)
             }
+        } else pendingGalleryReplaceId = null
+    }
+    fun launchGallery(replaceId: Long?) {
+        pendingGalleryReplaceId = replaceId
+        try { pickImage.launch("image/*") }
+        catch (failure: Exception) {
+            pendingGalleryReplaceId = null
+            onMessage("Галерея недоступна: ${failure.message}")
         }
     }
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
@@ -343,13 +373,15 @@ private fun PhotoTabContent(
                 pendingCameraPermissionResult = true
                 requestGalleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             } else {
+                val replaceId = pendingCameraReplaceId
                 onMessage(null)
-                model.cameraResult(path, success)
+                model.cameraResult(path, success, replacePhotoId = replaceId)
                 pendingCameraPath = null
+                pendingCameraReplaceId = null
             }
         }
     }
-    fun launchCamera() {
+    fun launchCamera(replaceId: Long?) {
         scope.launch {
             try {
                 val file = withContext(Dispatchers.IO) {
@@ -358,14 +390,26 @@ private fun PhotoTabContent(
                     File(dir, "${UUID.randomUUID()}.jpg").apply { createNewFile() }
                 }
                 pendingCameraPath = file.path
+                pendingCameraReplaceId = replaceId
                 takePhoto.launch(FileProvider.getUriForFile(context, "${context.packageName}.files", file))
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 pendingCameraPath?.let { path -> withContext(Dispatchers.IO) { File(path).delete() } }
                 pendingCameraPath = null
+                pendingCameraReplaceId = null
                 onMessage("Камера недоступна: ${failure.message}")
             }
         }
+    }
+
+    if (showAddChoices) {
+        AlertDialog(
+            onDismissRequest = { showAddChoices = false },
+            title = { Text("Добавить фотографию") },
+            text = { Text("Выберите, откуда добавить новый снимок к этой точке.") },
+            confirmButton = { TextButton(onClick = { showAddChoices = false; launchCamera(null) }) { Text("Камера") } },
+            dismissButton = { TextButton(onClick = { showAddChoices = false; launchGallery(null) }) { Text("Галерея") } }
+        )
     }
 
     if (photos.isEmpty()) {
@@ -379,13 +423,11 @@ private fun PhotoTabContent(
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(enabled = !busy && pendingCameraPath == null, onClick = { launchCamera() }, modifier = Modifier.weight(1f)) {
+                    Button(enabled = !busy && pendingCameraPath == null, onClick = { launchCamera(null) }, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                         Text(" Сделать фото")
                     }
-                    OutlinedButton(enabled = !busy && pendingCameraPath == null, onClick = {
-                        try { pickImage.launch("image/*") } catch (failure: Exception) { onMessage("Галерея недоступна: ${failure.message}") }
-                    }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(enabled = !busy && pendingCameraPath == null, onClick = { launchGallery(null) }, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
                         Text(" Галерея")
                     }
@@ -399,31 +441,37 @@ private fun PhotoTabContent(
                     style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(enabled = !busy && pendingCameraPath == null, onClick = { launchCamera() }, modifier = Modifier.weight(1f)) {
-                        Text("Добавить фото")
+                    Button(enabled = !busy && pendingCameraPath == null && selectedPhoto != null,
+                        onClick = { selectedPhoto?.let { launchCamera(it.id) } }, modifier = Modifier.weight(1f)) {
+                        Text("Переснять")
                     }
-                    OutlinedButton(enabled = !busy && pendingCameraPath == null, onClick = {
-                        try { pickImage.launch("image/*") } catch (failure: Exception) { onMessage("Галерея недоступна: ${failure.message}") }
-                    }, modifier = Modifier.weight(1f)) { Text("Из галереи") }
+                    OutlinedButton(enabled = !busy && pendingCameraPath == null && selectedPhoto != null,
+                        onClick = { selectedPhoto?.let { launchGallery(it.id) } }, modifier = Modifier.weight(1f)) {
+                        Text("Из галереи")
+                    }
                 }
+                Text("Кнопки сверху заменяют открытую фотографию.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(12.dp))
                 if (photos.size > 1) Text("Листайте фотографии влево и вправо", style = MaterialTheme.typography.bodySmall)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    itemsIndexed(photos, key = { _, photo -> photo.id }) { index, photo ->
-                        Column(Modifier.width(220.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().height(365.dp).testTag("pointPhotoPager")) { index ->
+                    val photo = photos[index]
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Фото ${index + 1} из ${photos.size}", style = MaterialTheme.typography.labelMedium)
                             PhotoThumbnail(photo.filePath, Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp)))
-                            Spacer(Modifier.height(6.dp))
                             PhotoDescriptionEditor(photo.id, photo.description, point.comment, busy) { description ->
                                 onMessage(null)
                                 model.saveDescription(photo.id, description)
                             }
                             TextButton(onClick = { photoToDelete = photo.id }, enabled = !busy) { Text("Удалить это фото") }
-                        }
                     }
                 }
             }
         }
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(onClick = { showAddChoices = true }, enabled = !busy && pendingCameraPath == null,
+            modifier = Modifier.fillMaxWidth()) { Text("Добавить фото") }
     }
 }
 

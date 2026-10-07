@@ -106,8 +106,10 @@ data class ReportPhotoRow(
 interface PhotoDao {
     @Insert suspend fun insert(photo: Photo): Long
     @Query("SELECT * FROM photos WHERE id = :id") suspend fun getById(id: Long): Photo?
-    @Query("SELECT * FROM photos WHERE pointId = :pointId") fun getByPoint(pointId: Long): Flow<List<Photo>>
+    @Query("SELECT * FROM photos WHERE pointId = :pointId ORDER BY id ASC") fun getByPoint(pointId: Long): Flow<List<Photo>>
     @Query("DELETE FROM photos WHERE id = :id") suspend fun deleteById(id: Long): Int
+    @Query("UPDATE photos SET filePath = :path WHERE id = :id AND pointId = :pointId")
+    suspend fun updateFilePath(id: Long, pointId: Long, path: String): Int
     @Query("UPDATE photos SET description = :description WHERE id = :id")
     suspend fun updateDescription(id: Long, description: String): Int
     @Query("DELETE FROM photos WHERE pointId = :pointId") suspend fun deleteByPoint(pointId: Long)

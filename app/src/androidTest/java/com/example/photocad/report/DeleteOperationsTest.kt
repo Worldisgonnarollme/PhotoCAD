@@ -12,6 +12,27 @@ import java.io.File
 class DeleteOperationsTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun retakingPhotoReplacesOnlyItsFileAndKeepsItsDescription() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val oldFile = File.createTempFile("old-photo", ".jpg", context.filesDir)
+        val newFile = File.createTempFile("new-photo", ".jpg", context.filesDir)
+        try {
+            val siteId = db.siteDao().insert(Site(name = "Объект"))
+            val drawingId = db.drawingDao().insert(Drawing(name = "План", filePath = "drawing", siteId = siteId))
+            val pointId = db.pointDao().insert(Point(drawingId = drawingId, x = 0.5f, y = 0.5f))
+            val replacedId = db.photoDao().insert(Photo(pointId = pointId, filePath = oldFile.path, description = "Сохранённая подпись"))
+            val otherId = db.photoDao().insert(Photo(pointId = pointId, filePath = oldFile.path, description = "Другое фото"))
+            db.replacePhotoFile(replacedId, pointId, newFile.path)
+            assertEquals(newFile.path, db.photoDao().getById(replacedId)!!.filePath)
+            assertEquals("Сохранённая подпись", db.photoDao().getById(replacedId)!!.description)
+            assertEquals(oldFile.path, db.photoDao().getById(otherId)!!.filePath)
+            assertTrue(oldFile.exists()) // still referenced by the other photo
+            db.deletePhoto(otherId)
+            assertFalse(oldFile.exists())
+            assertTrue(newFile.exists())
+        } finally { db.close(); oldFile.delete(); newFile.delete() }
+    }
+
     @Test fun deletingOnePhotoKeepsThePointAndItsOtherPhoto() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         val sharedFile = File.createTempFile("shared-photo", ".jpg", context.filesDir)
