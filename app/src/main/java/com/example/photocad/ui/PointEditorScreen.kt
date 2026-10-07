@@ -14,9 +14,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,15 +27,19 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.ContentScale
@@ -171,6 +176,8 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
     var preview by remember(drawing?.filePath, point.pageNumber) { mutableStateOf<Pair<Bitmap, android.util.Size>?>(null) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
     var dragOffsetPx by remember(point.id) { mutableStateOf<Offset?>(null) }
+    var scale by remember(point.id) { mutableFloatStateOf(1f) }
+    var pan by remember(point.id) { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current
     LaunchedEffect(drawing?.filePath, point.pageNumber) {
         preview = null
@@ -179,7 +186,7 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
         try {
             reader = openDrawingDocument(path)
             val size = reader.pageSize(point.pageNumber)
-            val bitmap = reader.renderPage(point.pageNumber, 800)
+            val bitmap = reader.renderPage(point.pageNumber, 1800)
             preview = bitmap to size
         } catch (_: Exception) {
             preview = null
@@ -194,18 +201,37 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
             else null
         }
     }
-    val transform = pageRect?.let { rect -> PageTransform(rect, Offset(boxSize.width / 2f, boxSize.height / 2f), 1f, Offset.Zero) }
+    val transform = pageRect?.let { rect ->
+        PageTransform(rect, Offset(boxSize.width / 2f, boxSize.height / 2f), scale, pan)
+    }
+    val latestTransform by rememberUpdatedState(transform)
 
     Box(
         Modifier
             .fillMaxWidth()
-            .height(140.dp)
+            .height(260.dp)
             .clip(RoundedCornerShape(12.dp))
+            .clipToBounds()
             .background(Color(0xFFF8F6F0))
             .onSizeChanged { boxSize = it }
+            .pointerInput(pageRect, boxSize) {
+                detectTransformGestures { centroid, drag, zoom, _ ->
+                    val rect = pageRect ?: return@detectTransformGestures
+                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                    val center = Offset(boxSize.width / 2f, boxSize.height / 2f)
+                    val offset = centroid - center
+                    val nextPan = offset - (offset - pan) / scale * nextScale + drag
+                    scale = nextScale
+                    pan = clampPagePan(nextPan, nextScale, rect, Offset(boxSize.width.toFloat(), boxSize.height.toFloat()))
+                }
+            }
     ) {
         preview?.first?.let { bitmap ->
-            Image(bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            Image(bitmap.asImageBitmap(), contentDescription = "Чертёж для переноса точки", contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = scale; scaleY = scale
+                    translationX = pan.x; translationY = pan.y
+                })
         }
         val rect = pageRect
         val pageTransform = transform
@@ -218,17 +244,17 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
                     .background(pointColors[colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
                     .pointerInput(point.id, rect) {
                         detectDragGestures(
-                            onDragStart = { dragOffsetPx = pageTransform.pageToScreen(Offset(point.x, point.y)) },
+                            onDragStart = { dragOffsetPx = latestTransform?.pageToScreen(Offset(point.x, point.y)) },
                             onDrag = { change, dragAmount ->
                                 change.consume()
-                                val base = dragOffsetPx ?: pageTransform.pageToScreen(Offset(point.x, point.y))
+                                val base = dragOffsetPx ?: latestTransform?.pageToScreen(Offset(point.x, point.y)) ?: Offset.Zero
                                 dragOffsetPx = base + dragAmount
                             },
                             onDragEnd = {
                                 val final = dragOffsetPx
                                 dragOffsetPx = null
                                 if (final != null) {
-                                    val normalized = pageTransform.screenToPageClamped(final)
+                                    val normalized = latestTransform?.screenToPageClamped(final) ?: return@detectDragGestures
                                     scope.launch { db.pointDao().updatePosition(point.id, normalized.x, normalized.y) }
                                 }
                             },
@@ -237,6 +263,20 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
                     },
                 contentAlignment = Alignment.Center
             ) { Text("$displayIndex", color = Color.White, style = MaterialTheme.typography.labelSmall) }
+        }
+        Column(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            IconButton(onClick = {
+                scale = (scale + 0.5f).coerceAtMost(5f)
+                pageRect?.let { pan = clampPagePan(pan, scale, it, Offset(boxSize.width.toFloat(), boxSize.height.toFloat())) }
+            }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
+                Icon(Icons.Default.ZoomIn, contentDescription = "Приблизить чертёж")
+            }
+            IconButton(onClick = {
+                scale = (scale - 0.5f).coerceAtLeast(1f)
+                pageRect?.let { pan = clampPagePan(pan, scale, it, Offset(boxSize.width.toFloat(), boxSize.height.toFloat())) }
+            }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
+                Icon(Icons.Default.ZoomOut, contentDescription = "Отдалить чертёж")
+            }
         }
     }
 }
@@ -255,6 +295,17 @@ private fun PhotoTabContent(
     val preferences by UserPreferences.photoPreferencesFlow(context).collectAsState(initial = PhotoPreferences())
     var pendingGalleryUri by remember(point.id) { mutableStateOf<android.net.Uri?>(null) }
     var pendingCameraPermissionResult by remember(point.id) { mutableStateOf<Boolean?>(null) }
+    var photoToDelete by remember(point.id) { mutableStateOf<Long?>(null) }
+
+    photoToDelete?.let { id ->
+        AlertDialog(
+            onDismissRequest = { photoToDelete = null },
+            title = { Text("Удалить фотографию?") },
+            text = { Text("Остальные фотографии этой точки сохранятся.") },
+            confirmButton = { TextButton(onClick = { photoToDelete = null; model.deletePhoto(id) }) { Text("Удалить") } },
+            dismissButton = { TextButton(onClick = { photoToDelete = null }) { Text("Отмена") } }
+        )
+    }
 
     val requestGalleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         pendingGalleryUri?.let { uri ->
@@ -344,24 +395,30 @@ private fun PhotoTabContent(
     } else {
         SectionCard {
             Column(Modifier.padding(16.dp)) {
+                Text("Фото у точки: ${photos.size}. Каждое фото станет отдельной страницей фотоальбома.",
+                    style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(enabled = !busy && pendingCameraPath == null, onClick = { launchCamera() }, modifier = Modifier.weight(1f)) {
-                        Text("Переснять")
+                        Text("Добавить фото")
                     }
                     OutlinedButton(enabled = !busy && pendingCameraPath == null, onClick = {
                         try { pickImage.launch("image/*") } catch (failure: Exception) { onMessage("Галерея недоступна: ${failure.message}") }
-                    }, modifier = Modifier.weight(1f)) { Text("Галерея") }
+                    }, modifier = Modifier.weight(1f)) { Text("Из галереи") }
                 }
                 Spacer(Modifier.height(12.dp))
+                if (photos.size > 1) Text("Листайте фотографии влево и вправо", style = MaterialTheme.typography.bodySmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(photos, key = { it.id }) { photo ->
+                    itemsIndexed(photos, key = { _, photo -> photo.id }) { index, photo ->
                         Column(Modifier.width(220.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Фото ${index + 1} из ${photos.size}", style = MaterialTheme.typography.labelMedium)
                             PhotoThumbnail(photo.filePath, Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp)))
                             Spacer(Modifier.height(6.dp))
                             PhotoDescriptionEditor(photo.id, photo.description, point.comment, busy) { description ->
                                 onMessage(null)
                                 model.saveDescription(photo.id, description)
                             }
+                            TextButton(onClick = { photoToDelete = photo.id }, enabled = !busy) { Text("Удалить это фото") }
                         }
                     }
                 }

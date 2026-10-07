@@ -14,6 +14,15 @@ private suspend fun AppDatabase.deleteFilesWhenUnreferenced(paths: Iterable<Stri
     }
 }
 
+suspend fun AppDatabase.deletePhoto(photoId: Long) {
+    val path = withTransaction {
+        val photo = photoDao().getById(photoId) ?: return@withTransaction null
+        photoDao().deleteById(photoId)
+        photo.filePath
+    } ?: return
+    deleteFilesWhenUnreferenced(listOf(path))
+}
+
 suspend fun AppDatabase.deletePoint(pointId: Long) {
     val files = photoDao().getByPoint(pointId).first().map { it.filePath }
     withTransaction {

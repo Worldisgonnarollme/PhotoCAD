@@ -15,6 +15,26 @@ import org.junit.Test
 
 class ReportEditingTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun twoPhotosOnOnePointAppearAsTwoAlbumPages() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val drawingId = runBlocking {
+                val siteId = db.siteDao().insert(Site(name = "Объект"))
+                val drawing = db.drawingDao().insert(Drawing(name = "План", filePath = "drawing", siteId = siteId))
+                val point = db.pointDao().insert(Point(drawingId = drawing, x = 0.5f, y = 0.5f))
+                db.photoDao().insert(Photo(pointId = point, filePath = "photo-one", description = "Первое"))
+                db.photoDao().insert(Photo(pointId = point, filePath = "photo-two", description = "Второе"))
+                drawing
+            }
+            compose.setContent { MaterialTheme { ReportScreen(db, drawingId) {} } }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Выберите тип документа").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Продолжить").performClick()
+            compose.onNodeWithText("Продолжить").performClick()
+            compose.onNodeWithText("Выбрано: 2 • Страниц: 4").assertExists()
+        } finally { db.close() }
+    }
+
     @Test fun temporaryTextIsNotSavedUntilExplicitActionAndSurvivesReportExitOnlyIfSaved() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()

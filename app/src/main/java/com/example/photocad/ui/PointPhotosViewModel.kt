@@ -122,6 +122,12 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
         null
     }
 
+    fun deletePhoto(photoId: Long) = perform("Фотография удалена") {
+        if (db.photoDao().getById(photoId)?.pointId != pointId) error("Фотография недоступна")
+        db.deletePhoto(photoId)
+        null
+    }
+
     class Factory(private val application: Application, private val db: AppDatabase, private val pointId: Long) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(PointPhotosViewModel::class.java))
