@@ -51,4 +51,35 @@ class DrawingEditingTest {
             assertEquals("Комментарий", point.comment)
         } finally { db.close() }
     }
+
+    @Test fun pointColorAndArchiveStateSurviveReopenWithoutChangingOtherPoints() = runBlocking {
+        val name = "point-color-${System.nanoTime()}.db"
+        try {
+            var firstId = 0L
+            var secondId = 0L
+            val firstDb = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            try {
+                val db = firstDb
+                val drawingId = db.drawingDao().insert(Drawing(name = "План", filePath = "drawing", siteId = 1))
+                firstId = db.pointDao().insert(Point(drawingId = drawingId, x = 0.3f, y = 0.4f, comment = "Исходный"))
+                secondId = db.pointDao().insert(Point(drawingId = drawingId, x = 0.6f, y = 0.7f))
+                db.pointDao().updateColor(firstId, 1)
+                db.pointDao().updateComment(firstId, "Новый комментарий")
+                db.photoDao().insert(Photo(pointId = firstId, filePath = "photo", description = "Личное описание"))
+                db.pointDao().setArchived(firstId, true)
+            } finally { firstDb.close() }
+            val secondDb = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            try {
+                val db = secondDb
+                val first = db.pointDao().getById(firstId)!!
+                val second = db.pointDao().getById(secondId)!!
+                assertEquals(1, first.colorIndex)
+                assertTrue(first.isArchived)
+                assertEquals("Новый комментарий", first.comment)
+                assertEquals("Личное описание", db.photoDao().getByPoint(firstId).first().single().description)
+                assertEquals(0, second.colorIndex)
+                assertFalse(second.isArchived)
+            } finally { secondDb.close() }
+        } finally { context.deleteDatabase(name) }
+    }
 }

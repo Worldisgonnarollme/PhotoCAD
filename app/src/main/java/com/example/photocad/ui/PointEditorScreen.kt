@@ -141,7 +141,6 @@ private fun PointTabContent(
     model: PointPhotosViewModel,
     busy: Boolean
 ) {
-    var colorIndex by remember(point.id) { mutableIntStateOf(point.colorIndex) }
     SectionCard {
         Column(Modifier.padding(16.dp)) {
             Text("Цвет точки", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -152,9 +151,8 @@ private fun PointTabContent(
                         Modifier
                             .size(32.dp)
                             .background(color, CircleShape)
-                            .border(width = if (index == colorIndex) 3.dp else 0.dp, color = MaterialTheme.colorScheme.onSurface, shape = CircleShape)
+                            .border(width = if (index == point.colorIndex) 3.dp else 0.dp, color = MaterialTheme.colorScheme.onSurface, shape = CircleShape)
                             .clickable(enabled = !busy) {
-                                colorIndex = index
                                 model.saveColor(index)
                             }
                     )
@@ -163,7 +161,7 @@ private fun PointTabContent(
             Spacer(Modifier.height(20.dp))
             Text("Переместить точку", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
-            MiniDraggableMap(db = db, point = point, displayIndex = displayIndex, drawing = drawing, colorIndex = colorIndex, scope = scope)
+            MiniDraggableMap(db = db, point = point, displayIndex = displayIndex, drawing = drawing, colorIndex = point.colorIndex, scope = scope)
         }
     }
 }
