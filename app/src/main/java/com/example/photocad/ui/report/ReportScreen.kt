@@ -74,7 +74,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             if (!state.initialized && !state.loading) item { Button(onClick = model::open) { Text("Повторить загрузку") } }
             if (state.initialized) when (state.step) {
                 ReportStep.TYPE -> {
-                    item { TypeStep(state.reportType, state.busy, model::chooseType) }
+                    item { TypeStep(state.reportType, !state.busy, model::chooseType) }
                     item { PrimaryButton(text = "Продолжить", onClick = model::next, enabled = !state.busy) }
                 }
                 ReportStep.COVER -> {
@@ -87,7 +87,8 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                 }
                 ReportStep.PHOTOS -> {
                     item {
-                        Text("Состав фотоальбома", style = MaterialTheme.typography.headlineSmall)
+                        Text(if (state.reportType == ReportType.PHOTO_ALBUM) "Состав фотоальбома" else "Состав фотоотчёта",
+                            style = MaterialTheme.typography.headlineSmall)
                         Text("Выберите фотографии, порядок и итоговые подписи. Правки подписи действуют только для текущего PDF.",
                             style = MaterialTheme.typography.bodySmall)
                         Text("Выбрано: ${state.selectedCount} • Страниц: ${state.pageCount}",

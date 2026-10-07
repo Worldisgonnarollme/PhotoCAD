@@ -1,14 +1,18 @@
 package com.example.photocad.ui.theme
 
 import android.app.Activity
+import android.graphics.drawable.ColorDrawable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -56,6 +60,7 @@ fun PhotoCADTheme(mode: AppThemeMode, content: @Composable () -> Unit) {
     val view = LocalView.current
     SideEffect {
         (view.context as? Activity)?.window?.let { window ->
+            window.setBackgroundDrawable(ColorDrawable(colors.background.toArgb()))
             window.statusBarColor = colors.background.toArgb()
             window.navigationBarColor = colors.background.toArgb()
             WindowInsetsControllerCompat(window, view).apply {
@@ -66,10 +71,9 @@ fun PhotoCADTheme(mode: AppThemeMode, content: @Composable () -> Unit) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
         }
     }
-    MaterialTheme(
-        colorScheme = colors,
-        shapes = AppShapes,
-        typography = AppTypography,
-        content = content
-    )
+    MaterialTheme(colorScheme = colors, shapes = AppShapes, typography = AppTypography) {
+        Surface(Modifier.fillMaxSize(), color = colors.background, contentColor = colors.onBackground) {
+            content()
+        }
+    }
 }
