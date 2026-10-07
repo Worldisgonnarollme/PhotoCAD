@@ -12,14 +12,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
-fun PhotoThumbnail(path: String, modifier: Modifier = Modifier) {
+fun PhotoThumbnail(path: String, modifier: Modifier = Modifier, maxDecodeDimension: Int = 320) {
     var failed by remember(path) { mutableStateOf(false) }
-    val bitmap by produceState<Bitmap?>(null, path) {
+    val bitmap by produceState<Bitmap?>(null, path, maxDecodeDimension) {
         value = null
         var loaded: Bitmap? = null
         var published = false
         try {
-            withContext(Dispatchers.IO) { loaded = ReportImageLoader.load(path, 320) }
+            withContext(Dispatchers.IO) { loaded = ReportImageLoader.load(path, maxDecodeDimension) }
             value = loaded
             published = true
             awaitDispose { /* Published bitmaps are owned by Compose/GC. */ }

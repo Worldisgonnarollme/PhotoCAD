@@ -32,7 +32,7 @@ internal class CoverPageRenderer {
         AlbumText.draw(canvas, "ФОТОМАТЕРИАЛ", left, 378f, width, 23f, bold = true, centered = true)
         AlbumText.draw(canvas, "с места производства работ", left, 414f, width, 16f, centered = true)
         if (cover.albumNumber.isNotBlank())
-            AlbumText.draw(canvas, "Фотоальбом № ${cover.albumNumber}", left, 448f, width, 11f, centered = true)
+            AlbumText.draw(canvas, "Фотоотчёт № ${cover.albumNumber}", left, 448f, width, 11f, centered = true)
         AlbumText.draw(canvas, cover.city, left, 722f, width, 11f, centered = true)
         AlbumText.draw(canvas, "${cover.year} г.", left, 739f, width, 11f, centered = true)
     }

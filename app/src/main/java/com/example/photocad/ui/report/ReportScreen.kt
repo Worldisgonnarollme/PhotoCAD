@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -51,14 +50,14 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { confirmExit = false }) { Text("Продолжить") } })
     }
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Отчёт: ${state.drawingName}") }, navigationIcon = {
+        TopAppBar(title = { Text("Фотоотчёт: ${state.drawingName}") }, navigationIcon = {
             TextButton(onClick = { confirmExit = true }) { Text("Назад") }
         })
     }, bottomBar = {
         if (state.step == ReportStep.COVER || state.step == ReportStep.PHOTOS) {
             Surface(shadowElevation = 6.dp) {
                 Box(Modifier.fillMaxWidth().padding(12.dp)) {
-                    StepNavigation(!state.busy, model::previous, model::next)
+                    StepNavigation(!state.busy, state.step != ReportStep.COVER, model::previous, model::next)
                 }
             }
         }
@@ -73,23 +72,19 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             } }
             if (!state.initialized && !state.loading) item { Button(onClick = model::open) { Text("Повторить загрузку") } }
             if (state.initialized) when (state.step) {
-                ReportStep.TYPE -> {
-                    item { TypeStep(state.reportType, !state.busy, model::chooseType) }
-                    item { PrimaryButton(text = "Продолжить", onClick = model::next, enabled = !state.busy) }
-                }
                 ReportStep.COVER -> {
                     item {
                         Text("Титульный лист", style = MaterialTheme.typography.headlineSmall)
-                        Text("Изменения относятся только к этому фотоальбому и не меняют данные объекта.",
+                        Text("Изменения относятся только к этому фотоотчёту и не меняют данные объекта.",
                             style = MaterialTheme.typography.bodySmall)
                     }
                     item { CoverFields(state.cover, !state.busy, model::editCover) }
                 }
                 ReportStep.PHOTOS -> {
                     item {
-                        Text(if (state.reportType == ReportType.PHOTO_ALBUM) "Состав фотоальбома" else "Состав фотоотчёта",
+                        Text("Состав фотоотчёта",
                             style = MaterialTheme.typography.headlineSmall)
-                        Text("Выберите фотографии, порядок и итоговые подписи. Правки подписи действуют только для текущего PDF.",
+                        Text("Выберите фотографии и порядок. Описание фотографии будет показано в итоговом PDF.",
                             style = MaterialTheme.typography.bodySmall)
                         Text("Выбрано: ${state.selectedCount} • Страниц: ${state.pageCount}",
                             style = MaterialTheme.typography.labelLarge)
@@ -107,12 +102,10 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                     item {
                         Text("Предварительный просмотр", style = MaterialTheme.typography.headlineSmall)
                         Text("Последовательность страниц: ${state.pageCount}")
-                        if (state.reportType == ReportType.PHOTO_ALBUM) {
-                            Text("1. Титульный лист")
-                            Text("2. Общая информация")
-                        }
+                        Text("1. Титульный лист")
+                        Text("2. Общая информация")
                         state.photos.filter { it.selected }.forEachIndexed { index, photo ->
-                            val number = index + if (state.reportType == ReportType.PHOTO_ALBUM) 3 else 1
+                            val number = index + 3
                             Text("$number. Точка №${photo.pointNumber} • фото ${index + 1}: ${photo.description}")
                         }
                     }
@@ -148,7 +141,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                 ReportStep.COMPLETE -> item {
                     SectionCard {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Фотоальбом успешно сохранён", style = MaterialTheme.typography.headlineSmall)
+                            Text("Фотоотчёт успешно сохранён", style = MaterialTheme.typography.headlineSmall)
                             if (!state.archiveDecisionDone) {
                                 Text("Архивные точки останутся в базе с фотографиями и исчезнут с рабочего чертежа. Точки с не включёнными фотографиями останутся активными.")
                                 PrimaryButton(text = "Архивировать использованные точки", onClick = model::archiveUsedPoints, enabled = !state.busy)
@@ -159,25 +152,6 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun TypeStep(type: ReportType, enabled: Boolean, onChoose: (ReportType) -> Unit) {
-    SectionCard {
-        Column(Modifier.padding(16.dp)) {
-            Text("Выберите тип документа", style = MaterialTheme.typography.headlineSmall)
-            Row(Modifier.fillMaxWidth().clickable(enabled) { onChoose(ReportType.PHOTO_ALBUM) }, verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = type == ReportType.PHOTO_ALBUM, onClick = { onChoose(ReportType.PHOTO_ALBUM) }, enabled = enabled)
-                Text("Фотоальбом")
-            }
-            Text("Титульный лист, общая информация и отдельная страница для каждой фотографии.", style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.fillMaxWidth().clickable(enabled) { onChoose(ReportType.SIMPLE) }, verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = type == ReportType.SIMPLE, onClick = { onChoose(ReportType.SIMPLE) }, enabled = enabled)
-                Text("Простой фотоотчёт")
-            }
-            Text("Существующий компактный формат отчёта.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -200,7 +174,7 @@ private fun CoverFields(cover: AlbumCover, enabled: Boolean, onChange: (AlbumCov
         field("Адрес объекта", cover.objectAddress) { cover.copy(objectAddress = it) }
         field("Город", cover.city) { cover.copy(city = it) }
         field("Год", cover.year) { cover.copy(year = it) }
-        field("Номер фотоальбома", cover.albumNumber) { cover.copy(albumNumber = it) }
+        field("Номер фотоотчёта", cover.albumNumber) { cover.copy(albumNumber = it) }
     }
 }
 
@@ -233,16 +207,16 @@ private fun PhotoDraftCard(photo: DraftPhoto, index: Int, total: Int, busy: Bool
                 TextButton(onClick = { onMove(1) }, enabled = !busy && index < total - 1) { Text("↓ Ниже") }
             }
             OutlinedTextField(value = photo.description, onValueChange = onEdit, enabled = !busy,
-                label = { Text("Описание для текущего PDF") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                label = { Text("Описание фотографии") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
             TextButton(onClick = onSave, enabled = !busy) { Text("Сохранить описание фотографии") }
         }
     }
 }
 
 @Composable
-private fun StepNavigation(enabled: Boolean, onPrevious: () -> Unit, onNext: () -> Unit) {
+private fun StepNavigation(enabled: Boolean, hasPrevious: Boolean, onPrevious: () -> Unit, onNext: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = onPrevious, enabled = enabled) { Text("К предыдущему шагу") }
+        if (hasPrevious) OutlinedButton(onClick = onPrevious, enabled = enabled) { Text("К предыдущему шагу") }
         PrimaryButton(text = "Продолжить", onClick = onNext, enabled = enabled)
     }
 }

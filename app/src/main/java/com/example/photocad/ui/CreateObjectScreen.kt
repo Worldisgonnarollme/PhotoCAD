@@ -123,7 +123,7 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
                     SectionCard {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Данные для титульного листа", style = MaterialTheme.typography.titleMedium)
-                            Text("Сохраняются у объекта как значения по умолчанию. В каждом фотоальбоме их можно изменить.",
+                            Text("Сохраняются у объекта как значения по умолчанию. В каждом фотоотчёте их можно изменить.",
                                 style = MaterialTheme.typography.bodySmall)
                             if (editing == null) {
                                 TextButton(onClick = { skipReportDetails = true; showReportDetails = false }) {
@@ -146,7 +146,7 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
                             field("Заказчик", reportDetails.customer) { reportDetails.copy(customer = it) }
                             field("Город", reportDetails.city) { reportDetails.copy(city = it) }
                             field("Год", reportDetails.year) { reportDetails.copy(year = it) }
-                            field("Номер фотоальбома", reportDetails.albumNumber) { reportDetails.copy(albumNumber = it) }
+                            field("Номер фотоотчёта", reportDetails.albumNumber) { reportDetails.copy(albumNumber = it) }
                         }
                     }
                 } else {

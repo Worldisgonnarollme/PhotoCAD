@@ -57,8 +57,8 @@ class PhotoAlbumGenerator(private val context: Context) {
             when (failure) {
                 is CancellationException -> throw failure
                 is ReportException -> throw failure
-                is OutOfMemoryError -> throw ReportException("Недостаточно памяти для фотоальбома", failure)
-                is Exception -> throw ReportException("Не удалось сформировать фотоальбом: ${failure.message}", failure)
+                is OutOfMemoryError -> throw ReportException("Недостаточно памяти для фотоотчёта", failure)
+                is Exception -> throw ReportException("Не удалось сформировать фотоотчёт: ${failure.message}", failure)
                 else -> throw failure
             }
         } finally {

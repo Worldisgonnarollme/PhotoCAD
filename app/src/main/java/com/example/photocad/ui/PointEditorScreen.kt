@@ -46,6 +46,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.photocad.data.*
@@ -296,6 +298,27 @@ private fun PhotoTabContent(
     var pendingCameraPermissionResult by remember(point.id) { mutableStateOf<Boolean?>(null) }
     var pendingCameraReplaceId by rememberSaveable(point.id) { mutableStateOf<Long?>(null) }
     var photoToDelete by remember(point.id) { mutableStateOf<Long?>(null) }
+    var photoToPreview by remember(point.id) { mutableStateOf<Photo?>(null) }
+    var showAddChoices by remember(point.id) { mutableStateOf(false) }
+
+    photoToPreview?.let { photo ->
+        Dialog(onDismissRequest = { photoToPreview = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column(Modifier.fillMaxSize().padding(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Просмотр фотографии", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { photoToPreview = null }) { Text("Закрыть") }
+                    }
+                    PhotoThumbnail(photo.filePath, Modifier.fillMaxWidth().weight(1f), maxDecodeDimension = 1800)
+                    photo.description?.takeIf { it.isNotBlank() }?.let { description ->
+                        Text(description, style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+                    }
+                }
+            }
+        }
+    }
 
     photoToDelete?.let { id ->
         AlertDialog(
@@ -409,7 +432,7 @@ private fun PhotoTabContent(
             }
         }
     } else {
-        Text("Фото у точки: ${photos.size}. Каждое фото станет отдельной страницей фотоальбома.",
+        Text("Фото у точки: ${photos.size}. Нажмите на снимок для просмотра. Каждое фото станет отдельной страницей фотоотчёта.",
             style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
         photos.forEachIndexed { index, photo ->
@@ -417,11 +440,16 @@ private fun PhotoTabContent(
                 SectionCard {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            PhotoThumbnail(photo.filePath, Modifier.size(88.dp).clip(RoundedCornerShape(8.dp)))
-                            Column {
+                            PhotoThumbnail(photo.filePath, Modifier.size(88.dp).clip(RoundedCornerShape(8.dp))
+                                .clickable { photoToPreview = photo })
+                            Column(Modifier.weight(1f)) {
                                 Text("Фотография ${index + 1}", style = MaterialTheme.typography.titleMedium)
                                 Text("Фото ${index + 1} из ${photos.size}", style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = { photoToDelete = photo.id }, enabled = !busy) {
+                                Icon(Icons.Default.Delete, contentDescription = "Удалить фотографию ${index + 1}",
+                                    tint = MaterialTheme.colorScheme.error)
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -434,16 +462,29 @@ private fun PhotoTabContent(
                             onMessage(null)
                             model.saveDescription(photo.id, description)
                         }
-                        TextButton(onClick = { photoToDelete = photo.id }, enabled = !busy) { Text("Удалить это фото") }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
             }
         }
-        Button(onClick = { launchCamera(null) }, enabled = !busy && pendingCameraPath == null,
+        OutlinedButton(onClick = { showAddChoices = !showAddChoices }, enabled = !busy && pendingCameraPath == null,
             modifier = Modifier.fillMaxWidth()) { Text("Добавить фото") }
-        OutlinedButton(onClick = { launchGallery(null) }, enabled = !busy && pendingCameraPath == null,
-            modifier = Modifier.fillMaxWidth()) { Text("Добавить из галереи") }
+        if (showAddChoices) {
+            Spacer(Modifier.height(8.dp))
+            SectionCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Новая фотография", style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(onClick = { showAddChoices = false; launchCamera(null) }, modifier = Modifier.weight(1f)) {
+                            Text("Сделать фото")
+                        }
+                        OutlinedButton(onClick = { showAddChoices = false; launchGallery(null) }, modifier = Modifier.weight(1f)) {
+                            Text("Из галереи")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

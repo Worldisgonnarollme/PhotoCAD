@@ -17,8 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-enum class ReportType { PHOTO_ALBUM, SIMPLE }
-enum class ReportStep { TYPE, COVER, PHOTOS, PREVIEW, COMPLETE }
+enum class ReportStep { COVER, PHOTOS, PREVIEW, COMPLETE }
 
 data class ReportUiState(
     val session: Long = 0,
@@ -26,8 +25,7 @@ data class ReportUiState(
     val loading: Boolean = false,
     val drawingName: String = "",
     val photos: List<DraftPhoto> = emptyList(),
-    val reportType: ReportType = ReportType.PHOTO_ALBUM,
-    val step: ReportStep = ReportStep.TYPE,
+    val step: ReportStep = ReportStep.COVER,
     val cover: AlbumCover = AlbumCover(),
     val operation: String? = null,
     val progress: Int = 0,
@@ -42,7 +40,7 @@ data class ReportUiState(
     val busy get() = loading || operation != null
     val selectedCount get() = photos.count { it.selected }
     val missingCaptionCount get() = photos.count { it.selected && it.description.isBlank() }
-    val pageCount get() = selectedCount + if (reportType == ReportType.PHOTO_ALBUM) 2 else 0
+    val pageCount get() = selectedCount + 2
 }
 
 class ReportViewModel(application: Application, private val db: AppDatabase, private val drawingId: Long) : AndroidViewModel(application) {
@@ -104,10 +102,6 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
     fun select(id: Long, selected: Boolean) = change { rows -> rows.map { if (it.photoId == id) it.copy(selected = selected) else it } }
     fun move(id: Long, delta: Int) = change { movePhoto(it, id, delta) }
 
-    fun chooseType(type: ReportType) {
-        if (mutable.value.busy || mutable.value.saved) return
-        mutable.update { invalidate(it.copy(reportType = type)) }
-    }
     fun editCover(cover: AlbumCover) {
         if (mutable.value.busy || mutable.value.saved) return
         mutable.update { invalidate(it.copy(cover = cover)) }
@@ -116,12 +110,11 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         if (mutable.value.busy || !mutable.value.initialized) return
         mutable.update { current ->
             when (current.step) {
-                ReportStep.TYPE -> current.copy(step = if (current.reportType == ReportType.PHOTO_ALBUM) ReportStep.COVER else ReportStep.PHOTOS)
                 ReportStep.COVER -> current.copy(step = ReportStep.PHOTOS)
                 ReportStep.PHOTOS -> when {
                     current.selectedCount == 0 -> current.copy(message = "Выберите хотя бы одну фотографию")
-                    current.reportType == ReportType.PHOTO_ALBUM && current.missingCaptionCount > 0 ->
-                        current.copy(message = "У ${current.missingCaptionCount} фотографий отсутствует описание")
+                    current.missingCaptionCount > 0 ->
+                        current.copy(message = "Заполните описания фотографий: ${current.missingCaptionCount}")
                     else -> current.copy(step = ReportStep.PREVIEW, message = null)
                 }
                 else -> current
@@ -131,8 +124,7 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
     fun previous() {
         if (mutable.value.busy || mutable.value.saved) return
         mutable.update { current -> current.copy(step = when (current.step) {
-            ReportStep.COVER -> ReportStep.TYPE
-            ReportStep.PHOTOS -> if (current.reportType == ReportType.PHOTO_ALBUM) ReportStep.COVER else ReportStep.TYPE
+            ReportStep.PHOTOS -> ReportStep.COVER
             ReportStep.PREVIEW -> ReportStep.PHOTOS
             else -> current.step
         }, message = null) }
@@ -160,11 +152,10 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         if (current.busy || current.step != ReportStep.PREVIEW) return
         val input = reportInput(current.photos)
         if (input.isEmpty()) { showMessage("Выберите хотя бы одну фотографию"); return }
-        if (current.reportType == ReportType.PHOTO_ALBUM && input.any { it.description.isBlank() }) {
+        if (input.any { it.description.isBlank() }) {
             showMessage("Заполните отсутствующие описания фотографий"); return
         }
         val cover = current.cover
-        val type = current.reportType
         val selected = current.photos.filter { it.selected }
         mutable.update { it.copy(operation = "Формирование PDF", progress = 0, total = input.size,
             generated = null, saved = false, message = null) }
@@ -174,9 +165,8 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
                 val progress: (Int, Int) -> Unit = { done, total ->
                     updateSession(session) { it.copy(progress = done, total = total) }
                 }
-                val result = if (type == ReportType.PHOTO_ALBUM)
-                    PhotoAlbumGenerator(getApplication()).generate(PhotoAlbumInput(cover, input), ReportFileManager.directory(getApplication()), progress)
-                else PdfReportGenerator().generate(input, ReportFileManager.directory(getApplication()), progress)
+                val result = PhotoAlbumGenerator(getApplication()).generate(
+                    PhotoAlbumInput(cover, input), ReportFileManager.directory(getApplication()), progress)
                 updateSession(session) { it.copy(generated = result,
                     generatedPhotoIds = selected.mapTo(mutableSetOf()) { photo -> photo.photoId },
                     generatedPointIds = selected.mapTo(mutableSetOf()) { photo -> photo.pointId },
@@ -196,9 +186,8 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         job = viewModelScope.launch {
             try {
                 ReportFileManager.save(getApplication(), result.file, uri)
-                updateSession(session) { it.copy(saved = true,
-                    step = if (it.reportType == ReportType.PHOTO_ALBUM) ReportStep.COMPLETE else it.step,
-                    message = if (it.reportType == ReportType.PHOTO_ALBUM) "Фотоальбом успешно сохранён" else "PDF сохранён") }
+                updateSession(session) { it.copy(saved = true, step = ReportStep.COMPLETE,
+                    message = "Фотоотчёт успешно сохранён") }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 updateSession(session) { it.copy(message = "Не удалось сохранить PDF: ${failure.message}. Повторите сохранение.") }
@@ -208,7 +197,7 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
 
     fun archiveUsedPoints() {
         val current = mutable.value
-        if (current.busy || !current.saved || current.archiveDecisionDone || current.reportType != ReportType.PHOTO_ALBUM) return
+        if (current.busy || !current.saved || current.archiveDecisionDone) return
         val included = current.generatedPhotoIds
         val pointIds = current.generatedPointIds
         mutable.update { it.copy(operation = "Архивирование точек", message = null) }

@@ -46,7 +46,16 @@ class PointPhotoPagerTest {
             compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Фотография").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Фотография 2").assertExists()
             compose.onAllNodesWithText("Переснять").assertCountEquals(2)
-            compose.onNodeWithText("Добавить из галереи").assertExists()
+            compose.onNodeWithContentDescription("Удалить фотографию 1").assertExists()
+            compose.onAllNodesWithContentDescription("Фотография").onFirst().performClick()
+            compose.onNodeWithText("Просмотр фотографии").assertExists()
+            compose.onNodeWithText("Закрыть").performClick()
+            compose.onNodeWithContentDescription("Удалить фотографию 1").performClick()
+            compose.onNodeWithText("Удалить фотографию?").assertExists()
+            compose.onNodeWithText("Отмена").performClick()
+            compose.onNodeWithText("Добавить фото").performScrollTo().performClick()
+            compose.onNodeWithText("Сделать фото").assertExists()
+            compose.onNodeWithText("Из галереи").assertExists()
         } finally { db.close(); firstFile.delete(); secondFile.delete() }
     }
 }
