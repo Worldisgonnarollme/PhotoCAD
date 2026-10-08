@@ -26,6 +26,7 @@ import com.example.photocad.report.AlbumCover
 import com.example.photocad.report.CaptionSource
 import com.example.photocad.report.DraftPhoto
 import com.example.photocad.report.ReportFileManager
+import com.example.photocad.ui.ConfirmDialog
 import com.example.photocad.ui.PhotoThumbnail
 import com.example.photocad.ui.components.PrimaryButton
 import com.example.photocad.ui.components.SectionCard
@@ -38,6 +39,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
         factory = ReportViewModel.Factory(context.applicationContext as Application, db, drawingId))
     val state by model.state.collectAsState()
     var confirmExit by remember { mutableStateOf(false) }
+    var confirmDeletePoints by remember { mutableStateOf(false) }
     LaunchedEffect(model) { model.open() }
     val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) model.savePdf(uri) else model.showMessage("Сохранение отменено. PDF доступен для повторного сохранения.")
@@ -48,6 +50,13 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             text = { Text("Временные подписи, выбор и порядок будут сброшены. Описания, явно сохранённые в базе, останутся.") },
             confirmButton = { TextButton(onClick = { model.discard(); onBack() }) { Text("Закрыть") } },
             dismissButton = { TextButton(onClick = { confirmExit = false }) { Text("Продолжить") } })
+    }
+    if (confirmDeletePoints) {
+        ConfirmDialog(
+            text = "Вы точно хотите удалить все точки после формирования отчёта? Это действие нельзя будет отменить.",
+            onConfirm = { confirmDeletePoints = false; model.setDeletePointsAfterSave(true) },
+            onDismiss = { confirmDeletePoints = false }
+        )
     }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Фотоотчёт: ${state.drawingName}") }, navigationIcon = {
@@ -107,6 +116,19 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                         state.photos.filter { it.selected }.forEachIndexed { index, photo ->
                             val number = index + 3
                             Text("$number. Точка №${photo.pointNumber} • фото ${index + 1}: ${photo.description}")
+                        }
+                    }
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = state.deletePointsAfterSave,
+                                enabled = !state.busy && !state.saved,
+                                // Ticking it asks for confirmation; unticking is harmless and needs none.
+                                onCheckedChange = { checked ->
+                                    if (checked) confirmDeletePoints = true else model.setDeletePointsAfterSave(false)
+                                }
+                            )
+                            Text("Удалить все точки после формирования отчёта", Modifier.weight(1f))
                         }
                     }
                     item { OutlinedButton(onClick = model::previous, enabled = !state.busy && !state.saved) { Text("К предыдущему шагу") } }
