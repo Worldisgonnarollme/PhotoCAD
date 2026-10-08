@@ -186,7 +186,7 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
         try {
             reader = openDrawingDocument(path)
             val size = reader.pageSize(point.pageNumber)
-            val bitmap = reader.renderPage(point.pageNumber, 1800)
+            val bitmap = reader.renderPage(point.pageNumber, 2400)
             preview = bitmap to size
         } catch (_: Exception) {
             preview = null
@@ -217,7 +217,7 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
             .pointerInput(pageRect, boxSize) {
                 detectTransformGestures { centroid, drag, zoom, _ ->
                     val rect = pageRect ?: return@detectTransformGestures
-                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                    val nextScale = (scale * zoom).coerceIn(MIN_SCALE, MAX_SCALE)
                     val center = Offset(boxSize.width / 2f, boxSize.height / 2f)
                     val offset = centroid - center
                     val nextPan = offset - (offset - pan) / scale * nextScale + drag
@@ -239,8 +239,8 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
             val currentPx = dragOffsetPx ?: pageTransform.pageToScreen(Offset(point.x, point.y))
             Box(
                 Modifier
-                    .offset(x = with(density) { currentPx.x.toDp() } - 14.dp, y = with(density) { currentPx.y.toDp() } - 14.dp)
-                    .size(28.dp)
+                    .offset(x = with(density) { currentPx.x.toDp() } - MARKER_SIZE / 2, y = with(density) { currentPx.y.toDp() } - MARKER_SIZE / 2)
+                    .size(MARKER_SIZE)
                     .background(pointColors[colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
                     .pointerInput(point.id, rect) {
                         detectDragGestures(
@@ -266,13 +266,13 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
         }
         Column(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             IconButton(onClick = {
-                scale = (scale + 0.5f).coerceAtMost(5f)
+                scale = (scale * 1.5f).coerceAtMost(MAX_SCALE)
                 pageRect?.let { pan = clampPagePan(pan, scale, it, Offset(boxSize.width.toFloat(), boxSize.height.toFloat())) }
             }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
                 Icon(Icons.Default.ZoomIn, contentDescription = "Приблизить чертёж")
             }
             IconButton(onClick = {
-                scale = (scale - 0.5f).coerceAtLeast(1f)
+                scale = (scale / 1.5f).coerceAtLeast(MIN_SCALE)
                 pageRect?.let { pan = clampPagePan(pan, scale, it, Offset(boxSize.width.toFloat(), boxSize.height.toFloat())) }
             }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
                 Icon(Icons.Default.ZoomOut, contentDescription = "Отдалить чертёж")

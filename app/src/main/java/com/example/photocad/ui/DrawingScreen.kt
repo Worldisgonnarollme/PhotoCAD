@@ -40,8 +40,13 @@ import kotlinx.coroutines.launch
 
 val pointColors = (0 until PointColors.size).map { Color(PointColors.argb(it)) }
 
-private const val MIN_SCALE = 1f
-private const val MAX_SCALE = 3f
+// Shared with PointEditorScreen so both views of the drawing zoom the same way.
+const val MIN_SCALE = 1f
+const val MAX_SCALE = 8f
+
+// Markers keep this on-screen size at every zoom level, so they cover less of the
+// drawing the closer you get.
+val MARKER_SIZE = 20.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,7 +106,8 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
         val reader = document ?: return@produceState
         if (renderSize.width <= 0 || renderSize.height <= 0) return@produceState
         try {
-            value = reader.renderPage(activePage, maxOf(renderSize.width, renderSize.height) * 2)
+            // Capped so a big viewport cannot ask for a bitmap large enough to exhaust memory.
+            value = reader.renderPage(activePage, (maxOf(renderSize.width, renderSize.height) * 2).coerceAtMost(3200))
         } catch (failure: Exception) {
             pageError = "Не удалось показать страницу $activePage: ${failure.message}"
         }
@@ -208,10 +214,10 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                             val position = dragScreen ?: transform.pageToScreen(Offset(point.x, point.y))
                             Box(
                                 Modifier.offset(
-                                    x = with(density) { position.x.toDp() } - 14.dp,
-                                    y = with(density) { position.y.toDp() } - 14.dp
+                                    x = with(density) { position.x.toDp() } - MARKER_SIZE / 2,
+                                    y = with(density) { position.y.toDp() } - MARKER_SIZE / 2
                                 )
-                                    .size(28.dp)
+                                    .size(MARKER_SIZE)
                                     .background(pointColors[point.colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
                                     .pointerInput(point.id, point.isFixed) {
                                         // A fixed point attaches no drag detector at all, so it
@@ -241,7 +247,7 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("${index + 1}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("${index + 1}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 DropdownMenu(expanded = menuPointId == point.id, onDismissRequest = { menuPointId = null }) {
                                     DropdownMenuItem(
                                         text = { Text("Закрепить") },
@@ -269,14 +275,14 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
 
             Column(Modifier.align(Alignment.TopEnd).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 IconButton(onClick = {
-                    val next = (scale + 0.25f).coerceAtMost(MAX_SCALE)
+                    val next = (scale * 1.5f).coerceAtMost(MAX_SCALE)
                     scale = next
                     pageRect?.let { pan = clampPagePan(pan, next, it, Offset(viewportSize.width.toFloat(), viewportSize.height.toFloat())) }
                 }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))) {
                     Icon(Icons.Default.ZoomIn, contentDescription = "Приблизить")
                 }
                 IconButton(onClick = {
-                    val next = (scale - 0.25f).coerceAtLeast(MIN_SCALE)
+                    val next = (scale / 1.5f).coerceAtLeast(MIN_SCALE)
                     scale = next
                     pageRect?.let { pan = clampPagePan(pan, next, it, Offset(viewportSize.width.toFloat(), viewportSize.height.toFloat())) }
                 }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))) {
