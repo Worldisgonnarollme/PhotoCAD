@@ -26,6 +26,7 @@ import com.example.photocad.report.AlbumCover
 import com.example.photocad.report.CaptionSource
 import com.example.photocad.report.DraftPhoto
 import com.example.photocad.report.ReportFileManager
+import com.example.photocad.report.reportInput
 import com.example.photocad.ui.PhotoThumbnail
 import com.example.photocad.ui.components.PrimaryButton
 import com.example.photocad.ui.components.SectionCard
@@ -104,9 +105,11 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                         Text("Последовательность страниц: ${state.pageCount}")
                         Text("1. Титульный лист")
                         Text("2. Общая информация")
-                        state.photos.filter { it.selected }.forEachIndexed { index, photo ->
-                            val number = index + 3
-                            Text("$number. Точка №${photo.pointNumber} • фото ${index + 1}: ${photo.description}")
+                        // Built from the same function the PDF uses, so the list cannot drift from it.
+                        reportInput(state.photos).forEachIndexed { index, photo ->
+                            val position = if (photo.photoCountInPoint > 1)
+                                " • фото ${photo.photoIndexInPoint} из ${photo.photoCountInPoint}" else ""
+                            Text("${index + 3}. лист ${photo.drawingPage} • Точка №${photo.pointNumber}$position: ${photo.description}")
                         }
                     }
                     item { OutlinedButton(onClick = model::previous, enabled = !state.busy && !state.saved) { Text("К предыдущему шагу") } }

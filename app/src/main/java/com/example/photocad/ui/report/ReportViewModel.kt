@@ -63,17 +63,14 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
                     val drawing = db.drawingDao().getById(drawingId) ?: throw ReportException("Чертёж недоступен")
                     val site = db.siteDao().getById(drawing.siteId)
                     val points = db.pointDao().getActiveByDrawing(drawingId)
-                    val ordinals = points.groupBy { it.pageNumber }.values.flatMap { page ->
-                        page.mapIndexed { index, point -> point.id to (index + 1) }
-                    }.toMap()
-                    val photos = db.photoDao().getReportRows(drawingId).map { row ->
+                    val photos = numberPointsForReport(points, db.photoDao().getReportRows(drawingId).map { row ->
                         DraftPhoto(row.photoId, row.pointId, row.filePath,
                             ReportRules.description(row.description, row.pointComment),
-                            drawingPage = row.pageNumber, pointNumber = ordinals[row.pointId] ?: 1,
+                            drawingPage = row.pageNumber,
                             drawingPath = drawing.filePath, drawingName = drawing.name,
                             pointX = row.x, pointY = row.y, colorIndex = row.colorIndex,
                             captionSource = captionSource(row.description, row.pointComment))
-                    }
+                    })
                     val details = site?.let { db.siteDao().getReportDetails(it.id) }
                     Triple(drawing, site to details, photos)
                 }
