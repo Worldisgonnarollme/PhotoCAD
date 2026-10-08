@@ -59,6 +59,8 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
     var selectedPointId by rememberSaveable(drawingId) { mutableStateOf<Long?>(null) }
     var newlyCreatedId by rememberSaveable(drawingId) { mutableStateOf<Long?>(null) }
     var draggedPointId by remember { mutableStateOf<Long?>(null) }
+    var menuPointId by remember { mutableStateOf<Long?>(null) }
+    var confirmingDeleteId by remember { mutableStateOf<Long?>(null) }
     var showPoints by rememberSaveable(drawingId) { mutableStateOf(true) }
     var scale by rememberSaveable(drawingId) { mutableFloatStateOf(1f) }
     var pan by remember(drawingId) { mutableStateOf(Offset.Zero) }
@@ -157,29 +159,34 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                 Box(
                     Modifier.fillMaxSize()
                         .pointerInput(transform, points, pageRect) {
-                            detectTapGestures { screen ->
-                                val nearby = points.firstOrNull { point ->
-                                    val marker = transform.pageToScreen(Offset(point.x, point.y))
-                                    val dx = marker.x - screen.x
-                                    val dy = marker.y - screen.y
-                                    dx * dx + dy * dy < 32f * 32f
-                                }
-                                if (nearby != null) {
-                                    selectedPointId = nearby.id
-                                } else {
-                                    val normalized = transform.screenToPage(screen) ?: return@detectTapGestures
-                                    scope.launch {
-                                        val id = db.pointDao().insert(Point(
-                                            drawingId = drawingId,
-                                            x = normalized.x,
-                                            y = normalized.y,
-                                            pageNumber = activePage
-                                        ))
-                                        newlyCreatedId = id
-                                        selectedPointId = id
+                            fun pointAt(screen: Offset) = points.firstOrNull { point ->
+                                val marker = transform.pageToScreen(Offset(point.x, point.y))
+                                val dx = marker.x - screen.x
+                                val dy = marker.y - screen.y
+                                dx * dx + dy * dy < 32f * 32f
+                            }
+                            detectTapGestures(
+                                // Long press opens the point menu; a plain tap keeps opening the card.
+                                onLongPress = { screen -> pointAt(screen)?.let { menuPointId = it.id } },
+                                onTap = { screen ->
+                                    val nearby = pointAt(screen)
+                                    if (nearby != null) {
+                                        selectedPointId = nearby.id
+                                    } else {
+                                        val normalized = transform.screenToPage(screen) ?: return@detectTapGestures
+                                        scope.launch {
+                                            val id = db.pointDao().insert(Point(
+                                                drawingId = drawingId,
+                                                x = normalized.x,
+                                                y = normalized.y,
+                                                pageNumber = activePage
+                                            ))
+                                            newlyCreatedId = id
+                                            selectedPointId = id
+                                        }
                                     }
                                 }
-                            }
+                            )
                         }
                         .pointerInput(pageRect, viewportSize) {
                             detectTransformGestures { centroid, drag, zoom, _ ->
@@ -206,7 +213,10 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                                 )
                                     .size(28.dp)
                                     .background(pointColors[point.colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
-                                    .pointerInput(point.id) {
+                                    .pointerInput(point.id, point.isFixed) {
+                                        // A fixed point attaches no drag detector at all, so it
+                                        // cannot be nudged and the gesture falls through to panning.
+                                        if (point.isFixed) return@pointerInput
                                         detectDragGestures(
                                             onDragStart = {
                                                 draggedPointId = point.id
@@ -230,7 +240,25 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                                         )
                                     },
                                 contentAlignment = Alignment.Center
-                            ) { Text("${index + 1}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            ) {
+                                Text("${index + 1}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                DropdownMenu(expanded = menuPointId == point.id, onDismissRequest = { menuPointId = null }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Закрепить") },
+                                        enabled = !point.isFixed,
+                                        onClick = { menuPointId = null; scope.launch { db.pointDao().setFixed(point.id, true) } }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Переместить") },
+                                        enabled = point.isFixed,
+                                        onClick = { menuPointId = null; scope.launch { db.pointDao().setFixed(point.id, false) } }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Удалить") },
+                                        onClick = { menuPointId = null; confirmingDeleteId = point.id }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -277,5 +305,13 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
             Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
             Text("Добавить точку", color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(start = 8.dp))
         }
+    }
+
+    confirmingDeleteId?.let { id ->
+        ConfirmDialog(
+            text = "Вы уверены, что хотите удалить точку?",
+            onConfirm = { confirmingDeleteId = null; scope.launch { db.deletePoint(id) } },
+            onDismiss = { confirmingDeleteId = null }
+        )
     }
 }
