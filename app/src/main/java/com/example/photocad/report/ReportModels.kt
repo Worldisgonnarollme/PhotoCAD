@@ -1,5 +1,6 @@
 package com.example.photocad.report
 
+import com.example.photocad.data.Point
 import java.io.File
 import java.io.IOException
 
@@ -13,7 +14,10 @@ data class PdfPhoto(
     val drawingName: String = "Чертёж",
     val pointX: Float = 0.5f,
     val pointY: Float = 0.5f,
-    val colorIndex: Int = 0
+    val colorIndex: Int = 0,
+    // Position among the photos of this point that actually made it into the album.
+    val photoIndexInPoint: Int = 1,
+    val photoCountInPoint: Int = 1
 )
 data class GeneratedReport(val file: File, val photoCount: Int, val pageCount: Int)
 class ReportException(message: String, cause: Throwable? = null) : IOException(message, cause)
@@ -50,22 +54,30 @@ fun movePhoto(photos: List<DraftPhoto>, id: Long, delta: Int): List<DraftPhoto> 
     return photos.toMutableList().apply { add(to, removeAt(from)) }
 }
 
-fun reportInput(photos: List<DraftPhoto>): List<PdfPhoto> =
-    photos.filter { it.selected }.map {
+/** Counts «фото k из n» over the selected photos only, so the album never promises a missing page. */
+fun reportInput(photos: List<DraftPhoto>): List<PdfPhoto> {
+    val selected = photos.filter { it.selected }
+    val countByPoint = selected.groupingBy { it.pointId }.eachCount()
+    val seenByPoint = mutableMapOf<Long, Int>()
+    return selected.map {
+        val position = (seenByPoint[it.pointId] ?: 0) + 1
+        seenByPoint[it.pointId] = position
         PdfPhoto(it.filePath, it.description, it.pointNumber, it.drawingPage,
-            it.drawingPath, it.drawingName, it.pointX, it.pointY, it.colorIndex)
+            it.drawingPath, it.drawingName, it.pointX, it.pointY, it.colorIndex,
+            position, countByPoint.getValue(it.pointId))
     }
+}
 
-fun reportPointOrdinals(photos: List<DraftPhoto>): List<DraftPhoto> {
-    val ordinalByPageAndPoint = linkedMapOf<Pair<Int, Long>, Int>()
+/**
+ * Numbers points the way the drawing screen does: the count restarts on every sheet and follows
+ * the order of the points themselves, so a point without photos still consumes its number.
+ */
+fun numberPointsForReport(points: List<Point>, photos: List<DraftPhoto>): List<DraftPhoto> {
     val nextByPage = mutableMapOf<Int, Int>()
-    return photos.map { photo ->
-        val key = photo.drawingPage to photo.pointId
-        val ordinal = ordinalByPageAndPoint.getOrPut(key) {
-            val next = (nextByPage[photo.drawingPage] ?: 0) + 1
-            nextByPage[photo.drawingPage] = next
-            next
-        }
-        photo.copy(pointNumber = ordinal)
+    val ordinals = points.associate { point ->
+        val next = (nextByPage[point.pageNumber] ?: 0) + 1
+        nextByPage[point.pageNumber] = next
+        point.id to next
     }
+    return photos.map { it.copy(pointNumber = ordinals[it.pointId] ?: 1) }
 }
