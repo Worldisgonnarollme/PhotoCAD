@@ -53,7 +53,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
     }
     if (confirmDeletePoints) {
         ConfirmDialog(
-            text = "Вы точно хотите удалить все точки после формирования отчёта? Это действие нельзя будет отменить.",
+            text = "Вы точно хотите удалить точки, вошедшие в отчёт, после его формирования? Это действие нельзя будет отменить.",
             onConfirm = { confirmDeletePoints = false; model.setDeletePointsAfterSave(true) },
             onDismiss = { confirmDeletePoints = false }
         )
@@ -128,7 +128,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                                     if (checked) confirmDeletePoints = true else model.setDeletePointsAfterSave(false)
                                 }
                             )
-                            Text("Удалить все точки после формирования отчёта", Modifier.weight(1f))
+                            Text("Удалить точки, вошедшие в отчёт, после его формирования", Modifier.weight(1f))
                         }
                     }
                     item { OutlinedButton(onClick = model::previous, enabled = !state.busy && !state.saved) { Text("К предыдущему шагу") } }
