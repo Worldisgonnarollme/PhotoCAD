@@ -20,7 +20,7 @@ class PhotoAlbumGenerator(private val context: Context) {
         val snapshot = input.copy(photos = input.photos.toList())
         if (snapshot.photos.isEmpty()) throw ReportException("Выберите хотя бы одну фотографию")
         snapshot.photos.forEachIndexed { index, photo ->
-            if (photo.description.isBlank()) throw ReportException("У фотографии №${index + 1} отсутствует описание")
+            // A blank description is allowed: the user confirms it before generation starts.
             if (!File(photo.filePath).isFile) throw ReportException("Фотография №${index + 1}: исходный файл отсутствует")
             if (!File(photo.drawingPath).isFile) throw ReportException("Чертёж для фотографии №${index + 1} недоступен")
         }

@@ -111,12 +111,10 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         mutable.update { current ->
             when (current.step) {
                 ReportStep.COVER -> current.copy(step = ReportStep.PHOTOS)
-                ReportStep.PHOTOS -> when {
-                    current.selectedCount == 0 -> current.copy(message = "Выберите хотя бы одну фотографию")
-                    current.missingCaptionCount > 0 ->
-                        current.copy(message = "Заполните описания фотографий: ${current.missingCaptionCount}")
-                    else -> current.copy(step = ReportStep.PREVIEW, message = null)
-                }
+                // A missing description no longer blocks the step: it is confirmed before generating.
+                ReportStep.PHOTOS ->
+                    if (current.selectedCount == 0) current.copy(message = "Выберите хотя бы одну фотографию")
+                    else current.copy(step = ReportStep.PREVIEW, message = null)
                 else -> current
             }
         }
@@ -152,9 +150,6 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         if (current.busy || current.step != ReportStep.PREVIEW) return
         val input = reportInput(current.photos)
         if (input.isEmpty()) { showMessage("Выберите хотя бы одну фотографию"); return }
-        if (input.any { it.description.isBlank() }) {
-            showMessage("Заполните отсутствующие описания фотографий"); return
-        }
         val cover = current.cover
         val selected = current.photos.filter { it.selected }
         mutable.update { it.copy(operation = "Формирование PDF", progress = 0, total = input.size,
