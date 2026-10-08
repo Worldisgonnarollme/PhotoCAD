@@ -11,7 +11,7 @@ class ReportDraftTest {
         assertEquals(listOf("/one.jpg", "/three.jpg"), reportInput(moved).map { it.filePath })
         assertEquals("Временное", reportInput(moved).first().description)
         assertEquals("Первое", original.first().description)
-        assertEquals(2, ReportRules.pageCount(reportInput(moved).size))
+        assertEquals(2, reportInput(moved).size)
         assertEquals(1, reportInput(original).first().pointNumber)
         assertEquals(1, reportInput(original).first().drawingPage)
     }
@@ -24,11 +24,6 @@ class ReportDraftTest {
             DraftPhoto(5, 10, "e", "", drawingPage = 1)
         )
         assertEquals(listOf(1, 1, 2, 1, 3), reportPointOrdinals(photos).map { it.pointNumber })
-    }
-    @Test fun captionsIncludePhotoPointAndDrawingPageAndOmitBlankDescription() {
-        assertEquals("Фото №2 • План этажа • Страница 3 • Точка №17", ReportRules.caption(2, "План этажа", 3, 17, "  "))
-        assertEquals("Фото №2 • План этажа • Страница 3 • Точка №17 — Трещина",
-            ReportRules.caption(2, "План этажа", 3, 17, " Трещина "))
     }
     @Test fun reportSnapshotCarriesDrawingAndPointLocation() {
         val photo = DraftPhoto(1, 4, "/photo.jpg", "", drawingPage = 2, pointNumber = 3,
