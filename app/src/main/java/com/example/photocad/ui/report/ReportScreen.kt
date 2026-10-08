@@ -107,9 +107,8 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                         Text("2. Общая информация")
                         // Built from the same function the PDF uses, so the list cannot drift from it.
                         reportInput(state.photos).forEachIndexed { index, photo ->
-                            val position = if (photo.photoCountInPoint > 1)
-                                " • фото ${photo.photoIndexInPoint} из ${photo.photoCountInPoint}" else ""
-                            Text("${index + 3}. лист ${photo.drawingPage} • Точка №${photo.pointNumber}$position: ${photo.description}")
+                            Text("${index + 3}. лист ${photo.drawingPage} • Точка №${photo.pointNumber}" +
+                                " • фото ${photo.photoIndexInPoint} из ${photo.photoCountInPoint}: ${photo.description}")
                         }
                     }
                     item { OutlinedButton(onClick = model::previous, enabled = !state.busy && !state.saved) { Text("К предыдущему шагу") } }

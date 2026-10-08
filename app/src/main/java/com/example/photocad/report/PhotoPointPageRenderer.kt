@@ -65,9 +65,8 @@ internal class PhotoPointPageRenderer : Closeable {
         canvas.drawRect(photoFrame, framePaint)
 
         // Sheet first: point numbers restart on every sheet, so the sheet is what tells them apart.
-        val position = if (photo.photoCountInPoint > 1) " • фото ${photo.photoIndexInPoint} из ${photo.photoCountInPoint}" else ""
-        AlbumText.draw(canvas, "${photo.drawingName} • лист ${photo.drawingPage} • Точка №${photo.pointNumber}$position",
-            28f, 704f, 539, 10f, bold = true)
+        AlbumText.draw(canvas, "${photo.drawingName} • лист ${photo.drawingPage} • Точка №${photo.pointNumber}" +
+            " • фото ${photo.photoIndexInPoint} из ${photo.photoCountInPoint}", 28f, 704f, 539, 10f, bold = true)
         val caption = photo.description.trim()
         val size = listOf(11f, 10f, 9f, 8f).firstOrNull { AlbumText.height(caption, 539, it) <= 87 }
             ?: throw ReportException("Описание фотографии слишком длинное для страницы A4")
