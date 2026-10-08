@@ -85,6 +85,8 @@ interface PointDao {
     suspend fun updateColor(id: Long, colorIndex: Int): Int
     @Query("UPDATE points SET isArchived = :archived WHERE id = :id")
     suspend fun setArchived(id: Long, archived: Boolean): Int
+    @Query("UPDATE points SET isFixed = :fixed WHERE id = :id")
+    suspend fun setFixed(id: Long, fixed: Boolean): Int
     @Query("DELETE FROM points WHERE id = :id") suspend fun delete(id: Long)
     @Query("DELETE FROM points WHERE drawingId = :drawingId") suspend fun deleteByDrawing(drawingId: Long)
     @Query("SELECT COUNT(*) FROM points") fun pointCount(): Flow<Int>
@@ -125,7 +127,7 @@ interface PhotoDao {
     suspend fun getReportRows(drawingId: Long): List<ReportPhotoRow>
 }
 
-@Database(entities = [Site::class, SiteReportDetails::class, Drawing::class, Point::class, Photo::class], version = 8, exportSchema = true)
+@Database(entities = [Site::class, SiteReportDetails::class, Drawing::class, Point::class, Photo::class], version = 9, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun siteDao(): SiteDao
     abstract fun drawingDao(): DrawingDao
@@ -141,7 +143,7 @@ abstract class AppDatabase : RoomDatabase() {
                         DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3,
                         DatabaseMigrations.MIGRATION_3_4, DatabaseMigrations.MIGRATION_4_5,
                         DatabaseMigrations.MIGRATION_5_6, DatabaseMigrations.MIGRATION_6_7,
-                        DatabaseMigrations.MIGRATION_7_8
+                        DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9
                     )
                     .build().also { INSTANCE = it }
             }

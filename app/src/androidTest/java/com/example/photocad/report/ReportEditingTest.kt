@@ -61,7 +61,7 @@ class ReportEditingTest {
         } finally { db.close() }
     }
 
-    @Test fun missingCaptionIsVisibleBeforeGeneration() {
+    @Test fun missingCaptionIsConfirmedAndDecliningReturnsToThePhotoList() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
@@ -76,8 +76,14 @@ class ReportEditingTest {
             compose.onNodeWithText("Продолжить").performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("Описание отсутствует").fetchSemanticsNodes().isNotEmpty() }
             assertTrue(compose.onAllNodesWithText("Описание отсутствует").fetchSemanticsNodes().isNotEmpty())
+            // The empty caption no longer blocks the step.
             compose.onNodeWithText("Продолжить").performClick()
-            compose.onNodeWithText("Заполните описания фотографий: 1").assertExists()
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Предварительный просмотр").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Сформировать PDF").performClick()
+            compose.onNodeWithText("Вы точно хотите сформировать отчёт? У некоторых фото отсутствует комментарий.").assertExists()
+            compose.onNodeWithText("Вернуться к фото").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Состав фотоотчёта").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Описание отсутствует").assertExists()
         } finally { db.close() }
     }
 }

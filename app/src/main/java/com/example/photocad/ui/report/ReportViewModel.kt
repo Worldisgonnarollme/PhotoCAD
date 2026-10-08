@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.example.photocad.data.AppDatabase
+import com.example.photocad.data.deletePoint
 import com.example.photocad.report.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -35,6 +36,7 @@ data class ReportUiState(
     val generatedPointIds: Set<Long> = emptySet(),
     val saved: Boolean = false,
     val archiveDecisionDone: Boolean = false,
+    val deletePointsAfterSave: Boolean = false,
     val message: String? = null
 ) {
     val busy get() = loading || operation != null
@@ -63,17 +65,14 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
                     val drawing = db.drawingDao().getById(drawingId) ?: throw ReportException("Чертёж недоступен")
                     val site = db.siteDao().getById(drawing.siteId)
                     val points = db.pointDao().getActiveByDrawing(drawingId)
-                    val ordinals = points.groupBy { it.pageNumber }.values.flatMap { page ->
-                        page.mapIndexed { index, point -> point.id to (index + 1) }
-                    }.toMap()
-                    val photos = db.photoDao().getReportRows(drawingId).map { row ->
+                    val photos = numberPointsForReport(points, db.photoDao().getReportRows(drawingId).map { row ->
                         DraftPhoto(row.photoId, row.pointId, row.filePath,
                             ReportRules.description(row.description, row.pointComment),
-                            drawingPage = row.pageNumber, pointNumber = ordinals[row.pointId] ?: 1,
+                            drawingPage = row.pageNumber,
                             drawingPath = drawing.filePath, drawingName = drawing.name,
                             pointX = row.x, pointY = row.y, colorIndex = row.colorIndex,
                             captionSource = captionSource(row.description, row.pointComment))
-                    }
+                    })
                     val details = site?.let { db.siteDao().getReportDetails(it.id) }
                     Triple(drawing, site to details, photos)
                 }
@@ -111,12 +110,10 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         mutable.update { current ->
             when (current.step) {
                 ReportStep.COVER -> current.copy(step = ReportStep.PHOTOS)
-                ReportStep.PHOTOS -> when {
-                    current.selectedCount == 0 -> current.copy(message = "Выберите хотя бы одну фотографию")
-                    current.missingCaptionCount > 0 ->
-                        current.copy(message = "Заполните описания фотографий: ${current.missingCaptionCount}")
-                    else -> current.copy(step = ReportStep.PREVIEW, message = null)
-                }
+                // A missing description no longer blocks the step: it is confirmed before generating.
+                ReportStep.PHOTOS ->
+                    if (current.selectedCount == 0) current.copy(message = "Выберите хотя бы одну фотографию")
+                    else current.copy(step = ReportStep.PREVIEW, message = null)
                 else -> current
             }
         }
@@ -152,9 +149,6 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         if (current.busy || current.step != ReportStep.PREVIEW) return
         val input = reportInput(current.photos)
         if (input.isEmpty()) { showMessage("Выберите хотя бы одну фотографию"); return }
-        if (input.any { it.description.isBlank() }) {
-            showMessage("Заполните отсутствующие описания фотографий"); return
-        }
         val cover = current.cover
         val selected = current.photos.filter { it.selected }
         mutable.update { it.copy(operation = "Формирование PDF", progress = 0, total = input.size,
@@ -177,17 +171,38 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
         }
     }
 
+    fun setDeletePointsAfterSave(enabled: Boolean) {
+        if (mutable.value.busy || mutable.value.saved) return
+        mutable.update { it.copy(deletePointsAfterSave = enabled, message = null) }
+    }
+
+    /** Same eligibility rule as archiving: a point goes only if every photo it still has is in the album. */
+    private suspend fun deleteUsedPoints(pointIds: Set<Long>, includedPhotoIds: Set<Long>): Int {
+        val eligible = db.withTransaction {
+            eligibleArchivePointIds(pointIds.associateWith { db.photoDao().getIdsByPoint(it).toSet() }, includedPhotoIds)
+        }
+        // Outside the transaction: deletePoint also removes photo files from disk.
+        eligible.forEach { db.deletePoint(it) }
+        return eligible.size
+    }
+
     fun savePdf(uri: Uri) {
         if (mutable.value.busy) return
-        val result = mutable.value.generated
+        val current = mutable.value
+        val result = current.generated
         if (result == null) { showMessage("Сформируйте PDF повторно"); return }
         mutable.update { it.copy(operation = "Сохранение PDF", message = null) }
-        val session = mutable.value.session
+        val session = current.session
         job = viewModelScope.launch {
             try {
                 ReportFileManager.save(getApplication(), result.file, uri)
+                // Deletion happens only after the file is written, so a failed save never costs points.
+                val deleted = if (current.deletePointsAfterSave)
+                    deleteUsedPoints(current.generatedPointIds, current.generatedPhotoIds) else null
                 updateSession(session) { it.copy(saved = true, step = ReportStep.COMPLETE,
-                    message = "Фотоотчёт успешно сохранён") }
+                    archiveDecisionDone = deleted != null || it.archiveDecisionDone,
+                    message = if (deleted == null) "Фотоотчёт успешно сохранён"
+                        else "Фотоотчёт сохранён. Удалено точек: $deleted. Точки с не включёнными фотографиями остались на чертеже.") }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 updateSession(session) { it.copy(message = "Не удалось сохранить PDF: ${failure.message}. Повторите сохранение.") }

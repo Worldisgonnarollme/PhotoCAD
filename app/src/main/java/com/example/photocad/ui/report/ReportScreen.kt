@@ -26,6 +26,8 @@ import com.example.photocad.report.AlbumCover
 import com.example.photocad.report.CaptionSource
 import com.example.photocad.report.DraftPhoto
 import com.example.photocad.report.ReportFileManager
+import com.example.photocad.report.reportInput
+import com.example.photocad.ui.ConfirmDialog
 import com.example.photocad.ui.PhotoThumbnail
 import com.example.photocad.ui.components.PrimaryButton
 import com.example.photocad.ui.components.SectionCard
@@ -38,6 +40,8 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
         factory = ReportViewModel.Factory(context.applicationContext as Application, db, drawingId))
     val state by model.state.collectAsState()
     var confirmExit by remember { mutableStateOf(false) }
+    var confirmDeletePoints by remember { mutableStateOf(false) }
+    var confirmMissingCaptions by remember { mutableStateOf(false) }
     LaunchedEffect(model) { model.open() }
     val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) model.savePdf(uri) else model.showMessage("Сохранение отменено. PDF доступен для повторного сохранения.")
@@ -48,6 +52,24 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             text = { Text("Временные подписи, выбор и порядок будут сброшены. Описания, явно сохранённые в базе, останутся.") },
             confirmButton = { TextButton(onClick = { model.discard(); onBack() }) { Text("Закрыть") } },
             dismissButton = { TextButton(onClick = { confirmExit = false }) { Text("Продолжить") } })
+    }
+    if (confirmDeletePoints) {
+        ConfirmDialog(
+            text = "Вы точно хотите удалить точки, вошедшие в отчёт, после его формирования? Это действие нельзя будет отменить.",
+            onConfirm = { confirmDeletePoints = false; model.setDeletePointsAfterSave(true) },
+            onDismiss = { confirmDeletePoints = false }
+        )
+    }
+    if (confirmMissingCaptions) {
+        AlertDialog(onDismissRequest = { confirmMissingCaptions = false },
+            text = { Text("Вы точно хотите сформировать отчёт? У некоторых фото отсутствует комментарий.") },
+            confirmButton = {
+                TextButton(onClick = { confirmMissingCaptions = false; model.generate() }) { Text("Сформировать") }
+            },
+            // Declining goes back to the photo list, where the captions are edited.
+            dismissButton = {
+                TextButton(onClick = { confirmMissingCaptions = false; model.previous() }) { Text("Вернуться к фото") }
+            })
     }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Фотоотчёт: ${state.drawingName}") }, navigationIcon = {
@@ -104,13 +126,31 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                         Text("Последовательность страниц: ${state.pageCount}")
                         Text("1. Титульный лист")
                         Text("2. Общая информация")
-                        state.photos.filter { it.selected }.forEachIndexed { index, photo ->
-                            val number = index + 3
-                            Text("$number. Точка №${photo.pointNumber} • фото ${index + 1}: ${photo.description}")
+                        // Built from the same function the PDF uses, so the list cannot drift from it.
+                        reportInput(state.photos).forEachIndexed { index, photo ->
+                            Text("${index + 3}. лист ${photo.drawingPage} • Точка №${photo.pointNumber}" +
+                                " • фото ${photo.photoIndexInPoint} из ${photo.photoCountInPoint}: ${photo.description}")
+                        }
+                    }
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = state.deletePointsAfterSave,
+                                enabled = !state.busy && !state.saved,
+                                // Ticking it asks for confirmation; unticking is harmless and needs none.
+                                onCheckedChange = { checked ->
+                                    if (checked) confirmDeletePoints = true else model.setDeletePointsAfterSave(false)
+                                }
+                            )
+                            Text("Удалить точки, вошедшие в отчёт, после его формирования", Modifier.weight(1f))
                         }
                     }
                     item { OutlinedButton(onClick = model::previous, enabled = !state.busy && !state.saved) { Text("К предыдущему шагу") } }
-                    item { PrimaryButton(text = "Сформировать PDF", onClick = model::generate, enabled = !state.busy && !state.saved) }
+                    item {
+                        PrimaryButton(text = "Сформировать PDF", enabled = !state.busy && !state.saved, onClick = {
+                            if (state.missingCaptionCount > 0) confirmMissingCaptions = true else model.generate()
+                        })
+                    }
                     state.operation?.let { operation -> item {
                         Text(operation)
                         if (operation == "Формирование PDF") {
