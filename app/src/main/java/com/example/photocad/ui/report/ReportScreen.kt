@@ -41,6 +41,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
     val state by model.state.collectAsState()
     var confirmExit by remember { mutableStateOf(false) }
     var confirmDeletePoints by remember { mutableStateOf(false) }
+    var confirmMissingCaptions by remember { mutableStateOf(false) }
     LaunchedEffect(model) { model.open() }
     val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) model.savePdf(uri) else model.showMessage("Сохранение отменено. PDF доступен для повторного сохранения.")
@@ -58,6 +59,17 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             onConfirm = { confirmDeletePoints = false; model.setDeletePointsAfterSave(true) },
             onDismiss = { confirmDeletePoints = false }
         )
+    }
+    if (confirmMissingCaptions) {
+        AlertDialog(onDismissRequest = { confirmMissingCaptions = false },
+            text = { Text("Вы точно хотите сформировать отчёт? У некоторых фото отсутствует комментарий.") },
+            confirmButton = {
+                TextButton(onClick = { confirmMissingCaptions = false; model.generate() }) { Text("Сформировать") }
+            },
+            // Declining goes back to the photo list, where the captions are edited.
+            dismissButton = {
+                TextButton(onClick = { confirmMissingCaptions = false; model.previous() }) { Text("Вернуться к фото") }
+            })
     }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Фотоотчёт: ${state.drawingName}") }, navigationIcon = {
@@ -134,7 +146,11 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                         }
                     }
                     item { OutlinedButton(onClick = model::previous, enabled = !state.busy && !state.saved) { Text("К предыдущему шагу") } }
-                    item { PrimaryButton(text = "Сформировать PDF", onClick = model::generate, enabled = !state.busy && !state.saved) }
+                    item {
+                        PrimaryButton(text = "Сформировать PDF", enabled = !state.busy && !state.saved, onClick = {
+                            if (state.missingCaptionCount > 0) confirmMissingCaptions = true else model.generate()
+                        })
+                    }
                     state.operation?.let { operation -> item {
                         Text(operation)
                         if (operation == "Формирование PDF") {
