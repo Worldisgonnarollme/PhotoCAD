@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.*
@@ -152,7 +151,12 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                     Icon(Icons.Default.Layers, contentDescription = "Показать/скрыть точки",
                         tint = if (showPoints) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = onReport) { Icon(Icons.Default.Share, contentDescription = "Сформировать отчёт") }
+                Button(
+                    onClick = onReport,
+                    shape = RoundedCornerShape(50),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(end = 8.dp)
+                ) { Text("Заполнить отчёт", style = MaterialTheme.typography.labelLarge) }
             }
         )
 
