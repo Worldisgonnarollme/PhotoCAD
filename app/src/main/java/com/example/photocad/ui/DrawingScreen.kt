@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ZoomIn
@@ -66,6 +67,8 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
     var draggedPointId by remember { mutableStateOf<Long?>(null) }
     var menuPointId by remember { mutableStateOf<Long?>(null) }
     var confirmingDeleteId by remember { mutableStateOf<Long?>(null) }
+    var choosingDeleteScope by remember { mutableStateOf(false) }
+    var confirmingDeleteAll by remember { mutableStateOf(false) }
     var showPoints by rememberSaveable(drawingId) { mutableStateOf(true) }
     var scale by rememberSaveable(drawingId) { mutableFloatStateOf(1f) }
     var pan by remember(drawingId) { mutableStateOf(Offset.Zero) }
@@ -123,6 +126,16 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
             onBack = { selectedPointId = null; newlyCreatedId = null }
         )
         return
+    }
+
+    // Archived points are deliberately left alone: they are invisible here, so wiping them
+    // from this screen would destroy evidence the user cannot even see.
+    fun deletePoints(onlyCurrentPage: Boolean) {
+        scope.launch {
+            val ids = if (onlyCurrentPage) points.map { it.id }
+            else db.pointDao().getActiveByDrawing(drawingId).map { it.id }
+            ids.forEach { db.deletePoint(it) }
+        }
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -311,6 +324,47 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
             Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
             Text("Добавить точку", color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(start = 8.dp))
         }
+
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                // One page has nothing to choose between, so it goes straight to the confirmation.
+                .clickable { if (pageCount > 1) choosingDeleteScope = true else confirmingDeleteAll = true }
+                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                .padding(vertical = 14.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+            Text("Удалить точки", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+
+    if (choosingDeleteScope) {
+        AlertDialog(
+            onDismissRequest = { choosingDeleteScope = false },
+            title = { Text("Удалить точки?") },
+            text = {
+                Column {
+                    Text("Вместе с точками удалятся их фотографии. Это действие нельзя будет отменить.")
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { choosingDeleteScope = false; deletePoints(onlyCurrentPage = false) }) {
+                        Text("Удалить точки на всех страницах")
+                    }
+                    TextButton(onClick = { choosingDeleteScope = false; deletePoints(onlyCurrentPage = true) }) {
+                        Text("Удалить точки на текущей странице")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { choosingDeleteScope = false }) { Text("Отмена") } }
+        )
+    }
+    if (confirmingDeleteAll) {
+        ConfirmDialog(
+            text = "Вы точно хотите удалить все точки? Вместе с ними удалятся их фотографии. Это действие нельзя будет отменить.",
+            onConfirm = { confirmingDeleteAll = false; deletePoints(onlyCurrentPage = false) },
+            onDismiss = { confirmingDeleteAll = false }
+        )
     }
 
     confirmingDeleteId?.let { id ->
