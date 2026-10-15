@@ -38,13 +38,10 @@ data class DraftPhoto(
     val captionSource: CaptionSource = CaptionSource.MISSING
 )
 
-enum class CaptionSource { PHOTO_DESCRIPTION, POINT_COMMENT, MISSING }
+enum class CaptionSource { PHOTO_DESCRIPTION, MISSING }
 
-fun captionSource(individual: String?, pointComment: String): CaptionSource = when {
-    !individual.isNullOrBlank() -> CaptionSource.PHOTO_DESCRIPTION
-    pointComment.isNotBlank() -> CaptionSource.POINT_COMMENT
-    else -> CaptionSource.MISSING
-}
+fun captionSource(individual: String?): CaptionSource =
+    if (individual.isNullOrBlank()) CaptionSource.MISSING else CaptionSource.PHOTO_DESCRIPTION
 
 fun movePhoto(photos: List<DraftPhoto>, id: Long, delta: Int): List<DraftPhoto> {
     val from = photos.indexOfFirst { it.photoId == id }

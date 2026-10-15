@@ -47,7 +47,7 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
     private suspend fun attach(path: String, preferences: PhotoPreferences, allowGallery: Boolean,
                                cameraSource: String? = null, replacePhotoId: Long? = null): String? {
         withContext(Dispatchers.IO) { ReportImageLoader.load(path, 320).recycle() }
-        if (replacePhotoId == null) db.insertPhotoWithComment(pointId, path)
+        if (replacePhotoId == null) db.insertPhoto(pointId, path)
         else db.replacePhotoFile(replacePhotoId, pointId, path)
         var galleryWarning: String? = null
         if (preferences.saveToGallery) {
@@ -113,11 +113,6 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
                 null
             }
         }
-    }
-
-    fun saveComment(comment: String) = perform("Комментарий точки сохранён. Описания существующих фото не изменены.") {
-        if (db.pointDao().updateComment(pointId, comment) != 1) error("Точка недоступна")
-        null
     }
 
     fun saveColor(colorIndex: Int) = perform("Цвет точки изменён") {

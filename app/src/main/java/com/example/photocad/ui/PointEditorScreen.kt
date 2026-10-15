@@ -59,7 +59,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
-private enum class PointTab(val label: String) { POINT("Точка"), PHOTO("Фото"), COMMENT("Комментарий") }
+private enum class PointTab(val label: String) { POINT("Точка"), PHOTO("Фото") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,7 +75,6 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
     val model: PointPhotosViewModel = viewModel(key = "point-photos-${point.id}",
         factory = PointPhotosViewModel.Factory(context.applicationContext as Application, db, point.id))
     val attachmentState by model.state.collectAsState()
-    var comment by rememberSaveable(point.id) { mutableStateOf(point.comment) }
     var localMessage by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf(false) }
     val busy = attachmentState.busy
@@ -84,10 +83,8 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
         topBar = {
             TopAppBar(
                 title = { Text("Точка $displayIndex") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } },
-                actions = {
-                    TextButton(onClick = { scope.launch { model.saveComment(comment) }; onBack() }) { Text("Сохранить") }
-                }
+                // Colour and photo descriptions save themselves, so there is nothing left to confirm.
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } }
             )
         }
     ) { padding ->
@@ -102,7 +99,6 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
                 when (tab) {
                     PointTab.POINT -> PointTabContent(db, point, displayIndex, scope, drawing, model, busy)
                     PointTab.PHOTO -> PhotoTabContent(context, scope, model, photos, point, busy) { localMessage = it }
-                    PointTab.COMMENT -> CommentTabContent(comment, busy, photos, point) { comment = it }
                 }
                 (localMessage ?: attachmentState.message)?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -458,7 +454,7 @@ private fun PhotoTabContent(
                             OutlinedButton(enabled = !busy && pendingCameraPath == null,
                                 onClick = { launchGallery(photo.id) }, modifier = Modifier.weight(1f)) { Text("Заменить из галереи") }
                         }
-                        PhotoDescriptionEditor(photo.id, photo.description, point.comment, busy) { description ->
+                        PhotoDescriptionEditor(photo.id, photo.description, busy) { description ->
                             onMessage(null)
                             model.saveDescription(photo.id, description)
                         }
@@ -488,20 +484,3 @@ private fun PhotoTabContent(
     }
 }
 
-@Composable
-private fun CommentTabContent(comment: String, busy: Boolean, photos: List<Photo>, point: Point, onChange: (String) -> Unit) {
-    SectionCard {
-        Column(Modifier.padding(16.dp)) {
-            Text("Комментарий", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = comment, onValueChange = onChange, enabled = !busy, minLines = 4, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
-            Text("Новые фото получают этот комментарий как описание по умолчанию.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (photos.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Text("Фотографий у точки: ${photos.size}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}

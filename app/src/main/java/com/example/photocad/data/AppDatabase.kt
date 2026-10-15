@@ -77,8 +77,6 @@ interface PointDao {
     @Query("SELECT * FROM points WHERE drawingId = :drawingId AND pageNumber = :pageNumber AND isArchived = 0 ORDER BY id ASC")
     fun getByDrawingPage(drawingId: Long, pageNumber: Int): Flow<List<Point>>
     @Query("SELECT * FROM points WHERE id = :id") suspend fun getById(id: Long): Point?
-    @Query("UPDATE points SET comment = :comment WHERE id = :id")
-    suspend fun updateComment(id: Long, comment: String): Int
     @Query("UPDATE points SET x = :x, y = :y WHERE id = :id")
     suspend fun updatePosition(id: Long, x: Float, y: Float): Int
     @Query("UPDATE points SET colorIndex = :colorIndex WHERE id = :id")
@@ -100,7 +98,6 @@ data class ReportPhotoRow(
     val y: Float,
     val filePath: String,
     val description: String?,
-    val pointComment: String,
     val colorIndex: Int
 )
 
@@ -119,7 +116,7 @@ interface PhotoDao {
     @Query("SELECT id FROM photos WHERE pointId = :pointId") suspend fun getIdsByPoint(pointId: Long): List<Long>
     @Query("""
         SELECT photos.id AS photoId, photos.pointId, points.pageNumber, points.x, points.y, photos.filePath,
-               photos.description, points.comment AS pointComment, points.colorIndex
+               photos.description, points.colorIndex
         FROM photos INNER JOIN points ON photos.pointId = points.id
         WHERE points.drawingId = :drawingId AND points.isArchived = 0
         ORDER BY points.id ASC, photos.id ASC

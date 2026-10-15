@@ -78,7 +78,8 @@ class PhotoAttachmentTest {
             runBlocking { model.state.first { it.completedCameraPath == file.path && !it.busy } }
             val photo = runBlocking { db.photoDao().getByPoint(pointId).first().single() }
             assertEquals(file.path, photo.filePath)
-            assertEquals("Копия", photo.description)
+            // The point comment is no longer copied into new photos.
+            assertNull(photo.description)
             val reportRow = runBlocking {
                 val drawingId = db.pointDao().getById(pointId)!!.drawingId
                 db.photoDao().getReportRows(drawingId).single()
@@ -86,8 +87,7 @@ class PhotoAttachmentTest {
             assertEquals(2, reportRow.pageNumber)
             assertEquals(0.25f, reportRow.x, 0f)
             assertEquals(0.75f, reportRow.y, 0f)
-            runBlocking { db.pointDao().updateComment(pointId, "Изменённый комментарий") }
-            assertEquals("Копия", runBlocking { db.photoDao().getByPoint(pointId).first().single().description })
+            assertNull(runBlocking { db.photoDao().getByPoint(pointId).first().single().description })
             instrumentation.runOnMainSync { model.cameraResult(file.path, true) }
             assertEquals(1, runBlocking { db.photoDao().getByPoint(pointId).first().size })
         } finally {

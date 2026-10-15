@@ -27,10 +27,10 @@ class PhotoAlbumModelTest {
         assertEquals(1, input.colorIndex)
     }
 
-    @Test fun captionSourceDistinguishesStoredPhotoTextFromFallback() {
-        assertEquals(CaptionSource.PHOTO_DESCRIPTION, captionSource("Личное", "Общее"))
-        assertEquals(CaptionSource.POINT_COMMENT, captionSource("  ", "Общее"))
-        assertEquals(CaptionSource.MISSING, captionSource(null, " "))
+    @Test fun captionSourceIsEitherTheStoredPhotoTextOrNothing() {
+        assertEquals(CaptionSource.PHOTO_DESCRIPTION, captionSource("Личное"))
+        assertEquals(CaptionSource.MISSING, captionSource("  "))
+        assertEquals(CaptionSource.MISSING, captionSource(null))
     }
 
     @Test fun pointCropKeepsTheMarkerVisibleAtTheSourceEdge() {

@@ -235,7 +235,6 @@ private fun PhotoDraftCard(photo: DraftPhoto, index: Int, total: Int, busy: Bool
                     }
                     Text(when (photo.captionSource) {
                         CaptionSource.PHOTO_DESCRIPTION -> "Источник: описание фотографии"
-                        CaptionSource.POINT_COMMENT -> "Источник: комментарий точки"
                         CaptionSource.MISSING -> "Источник: не заполнен"
                     }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (photo.selected && photo.description.isBlank())

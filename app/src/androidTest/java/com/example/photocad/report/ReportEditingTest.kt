@@ -41,7 +41,7 @@ class ReportEditingTest {
             val ids = runBlocking {
                 val drawing = db.drawingDao().insert(Drawing(name = "Проверка", filePath = "drawing", siteId = 1))
                 val point = db.pointDao().insert(Point(drawingId = drawing, x = 0f, y = 0f, comment = "Исходное"))
-                db.insertPhotoWithComment(point, "missing-thumbnail-is-allowed-in-editor")
+                db.insertPhoto(point, "missing-thumbnail-is-allowed-in-editor")
                 drawing to point
             }
             var exited = false
@@ -50,7 +50,7 @@ class ReportEditingTest {
             compose.onNodeWithText("Продолжить").performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("Описание фотографии").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Описание фотографии").performTextReplacement("Временно")
-            assertEquals("Исходное", runBlocking { db.photoDao().getByPoint(ids.second).first().single().description })
+            assertNull(runBlocking { db.photoDao().getByPoint(ids.second).first().single().description })
             compose.onNodeWithText("Сохранить описание фотографии").performScrollTo().performClick()
             compose.waitUntil(10000) { runBlocking { db.photoDao().getByPoint(ids.second).first().single().description == "Временно" } }
             compose.onNodeWithText("Описание фотографии").performTextReplacement("Несохранённое")

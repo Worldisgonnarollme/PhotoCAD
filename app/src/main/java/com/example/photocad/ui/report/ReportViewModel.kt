@@ -67,11 +67,11 @@ class ReportViewModel(application: Application, private val db: AppDatabase, pri
                     val points = db.pointDao().getActiveByDrawing(drawingId)
                     val photos = numberPointsForReport(points, db.photoDao().getReportRows(drawingId).map { row ->
                         DraftPhoto(row.photoId, row.pointId, row.filePath,
-                            ReportRules.description(row.description, row.pointComment),
+                            row.description.orEmpty(),
                             drawingPage = row.pageNumber,
                             drawingPath = drawing.filePath, drawingName = drawing.name,
                             pointX = row.x, pointY = row.y, colorIndex = row.colorIndex,
-                            captionSource = captionSource(row.description, row.pointComment))
+                            captionSource = captionSource(row.description))
                     })
                     val details = site?.let { db.siteDao().getReportDetails(it.id) }
                     Triple(drawing, site to details, photos)
