@@ -193,7 +193,7 @@ fun CreateObjectScreen(db: AppDatabase, editing: Site?, onBack: () -> Unit, onSa
 
             item {
                 PrimaryButton(
-                    text = if (editing == null) "Создать" else "Сохранить",
+                    text = if (editing == null) "Заполнить позже" else "Сохранить",
                     enabled = name.isNotBlank(),
                     onClick = {
                         scope.launch {

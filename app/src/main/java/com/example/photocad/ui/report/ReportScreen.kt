@@ -27,6 +27,9 @@ import com.example.photocad.report.CaptionSource
 import com.example.photocad.report.DraftPhoto
 import com.example.photocad.report.ReportFileManager
 import com.example.photocad.report.reportInput
+import com.example.photocad.report.reportFileName
+import com.example.photocad.report.readableReportDateTime
+import com.example.photocad.report.ReportSelection
 import com.example.photocad.ui.ConfirmDialog
 import com.example.photocad.ui.PhotoThumbnail
 import com.example.photocad.ui.components.PrimaryButton
@@ -35,9 +38,22 @@ import com.example.photocad.ui.components.SectionCard
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
+    ReportEditor(db, drawingId = drawingId, siteId = null, onBack = onBack)
+}
+
+/** Entry point for a report that spans all selected drawings of an object. */
+@Composable
+fun SiteReportScreen(db: AppDatabase, siteId: Long, onBack: () -> Unit) {
+    ReportEditor(db, drawingId = null, siteId = siteId, onBack = onBack)
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun ReportEditor(db: AppDatabase, drawingId: Long?, siteId: Long?, onBack: () -> Unit) {
     val context = LocalContext.current
-    val model: ReportViewModel = viewModel(key = "report-$drawingId",
-        factory = ReportViewModel.Factory(context.applicationContext as Application, db, drawingId))
+    val model: ReportViewModel = viewModel(key = "report-${siteId ?: "drawing-$drawingId"}",
+        factory = if (siteId != null) ReportViewModel.Factory.forSite(context.applicationContext as Application, db, siteId)
+            else ReportViewModel.Factory(context.applicationContext as Application, db, requireNotNull(drawingId)))
     val state by model.state.collectAsState()
     var confirmExit by remember { mutableStateOf(false) }
     var confirmDeletePoints by remember { mutableStateOf(false) }
@@ -55,7 +71,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
     }
     if (confirmDeletePoints) {
         ConfirmDialog(
-            text = "Вы точно хотите удалить точки, вошедшие в отчёт, после его формирования? Это действие нельзя будет отменить.",
+            text = "Удалить полностью включённые точки после успешного сохранения PDF? Это действие нельзя будет отменить.",
             onConfirm = { confirmDeletePoints = false; model.setDeletePointsAfterSave(true) },
             onDismiss = { confirmDeletePoints = false }
         )
@@ -76,10 +92,11 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             TextButton(onClick = { confirmExit = true }) { Text("Назад") }
         })
     }, bottomBar = {
-        if (state.step == ReportStep.COVER || state.step == ReportStep.PHOTOS) {
+        if (state.step == ReportStep.SCOPE || state.step == ReportStep.COVER || state.step == ReportStep.PHOTOS) {
             Surface(shadowElevation = 6.dp) {
                 Box(Modifier.fillMaxWidth().padding(12.dp)) {
-                    StepNavigation(!state.busy, state.step != ReportStep.COVER, model::previous, model::next)
+                    StepNavigation(!state.busy, state.step != ReportStep.SCOPE &&
+                        !(drawingId != null && state.step == ReportStep.PHOTOS), model::previous, model::next)
                 }
             }
         }
@@ -94,6 +111,29 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             } }
             if (!state.initialized && !state.loading) item { Button(onClick = model::open) { Text("Повторить загрузку") } }
             if (state.initialized) when (state.step) {
+                ReportStep.SCOPE -> {
+                    item {
+                        Text("Параметры фотоотчёта", style = MaterialTheme.typography.headlineSmall)
+                        Text("Выберите чертежи и период съёмки. Фото без даты включаются отдельной группой.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    item {
+                        SectionCard { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Чертежи", style = MaterialTheme.typography.titleMedium)
+                            state.drawings.forEach { drawing ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = drawing.id in state.selection.drawingIds, enabled = !state.busy,
+                                        onCheckedChange = { checked -> model.editSelection(state.selection.copy(
+                                            drawingIds = if (checked) state.selection.drawingIds + drawing.id
+                                                else state.selection.drawingIds - drawing.id)) })
+                                    Text(drawing.name)
+                                }
+                            }
+                            if (state.drawings.isEmpty()) Text("В объекте пока нет чертежей")
+                        } }
+                    }
+                    item { PeriodFields(state.selection, !state.busy, model::editSelection) }
+                }
                 ReportStep.COVER -> {
                     item {
                         Text("Титульный лист", style = MaterialTheme.typography.headlineSmall)
@@ -110,9 +150,15 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall)
                         Text("Выбрано: ${state.selectedCount} • Страниц: ${state.pageCount}",
                             style = MaterialTheme.typography.labelLarge)
+                        TextButton(onClick = model::openCover, enabled = !state.busy) { Text("Изменить титульный лист") }
                     }
-                    if (state.photos.isEmpty()) item { Text("У точек этого чертежа пока нет фотографий.") }
+                    if (state.photos.isEmpty()) item { Text("Для выбранных чертежей и периода фотографий нет.") }
                     itemsIndexed(state.photos, key = { _, photo -> photo.photoId }) { index, photo ->
+                        val undatedIds = state.allPhotos.filter { it.capturedAtLocal.isNullOrBlank() }.mapTo(mutableSetOf()) { it.photoId }
+                        if (state.selection.undatedGroupDateTime.isBlank() && photo.photoId in undatedIds &&
+                            (index == 0 || state.photos[index - 1].photoId !in undatedIds))
+                            Text("Фото без даты съёмки",
+                                style = MaterialTheme.typography.titleMedium)
                         PhotoDraftCard(photo, index, state.photos.size, state.busy,
                             onSelect = { model.select(photo.photoId, it) },
                             onMove = { model.move(photo.photoId, it) },
@@ -128,8 +174,8 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                         Text("2. Общая информация")
                         // Built from the same function the PDF uses, so the list cannot drift from it.
                         reportInput(state.photos).forEachIndexed { index, photo ->
-                            Text("${index + 3}. лист ${photo.drawingPage} • Точка №${photo.pointNumber}" +
-                                " • фото ${photo.photoIndexInPoint} из ${photo.photoCountInPoint}: ${photo.description}")
+                            Text("${index + 3}. Фото №${index + 1} • ${photo.drawingName}, лист ${photo.drawingPage} • Точка №${photo.pointNumber}" +
+                                " • ${readableReportDateTime(photo.capturedAtLocal, photo.capturedOffsetMinutes)}: ${photo.description}")
                         }
                     }
                     item {
@@ -142,7 +188,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                                     if (checked) confirmDeletePoints = true else model.setDeletePointsAfterSave(false)
                                 }
                             )
-                            Text("Удалить точки, вошедшие в отчёт, после его формирования", Modifier.weight(1f))
+                            Text("Удалить полностью включённые точки после успешного сохранения PDF", Modifier.weight(1f))
                         }
                     }
                     item { OutlinedButton(onClick = model::previous, enabled = !state.busy && !state.saved) { Text("К предыдущему шагу") } }
@@ -164,7 +210,7 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 PrimaryButton(text = "Сохранить PDF", enabled = !state.busy, onClick = {
-                                    try { createDocument.launch("PhotoCAD-${drawingId}-${System.currentTimeMillis()}.pdf") }
+                                    try { createDocument.launch(generated.file.name) }
                                     catch (failure: Exception) { model.showMessage("Не удалось открыть выбор места сохранения: ${failure.message}") }
                                 })
                                 OutlinedButton(onClick = {
@@ -182,11 +228,6 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
                     SectionCard {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("Фотоотчёт успешно сохранён", style = MaterialTheme.typography.headlineSmall)
-                            if (!state.archiveDecisionDone) {
-                                Text("Архивные точки останутся в базе с фотографиями и исчезнут с рабочего чертежа. Точки с не включёнными фотографиями останутся активными.")
-                                PrimaryButton(text = "Архивировать использованные точки", onClick = model::archiveUsedPoints, enabled = !state.busy)
-                                OutlinedButton(onClick = model::leavePointsActive, enabled = !state.busy) { Text("Оставить точки активными") }
-                            }
                             state.operation?.let { Text(it); LinearProgressIndicator(Modifier.fillMaxWidth()) }
                         }
                     }
@@ -194,6 +235,28 @@ fun ReportScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun PeriodFields(selection: ReportSelection, enabled: Boolean, onChange: (ReportSelection) -> Unit) {
+    SectionCard { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Период съёмки", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(selection.fromDate, { onChange(selection.copy(fromDate = it)) },
+            label = { Text("С даты · ГГГГ-ММ-ДД") }, enabled = enabled, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        OutlinedTextField(selection.throughDate, { onChange(selection.copy(throughDate = it)) },
+            label = { Text("По дату · ГГГГ-ММ-ДД") }, enabled = enabled, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Text("Для одного дня укажите одинаковые даты.", style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(selection.includeUndated, onCheckedChange = { onChange(selection.copy(includeUndated = it)) }, enabled = enabled)
+            Text("Включить фото без даты съёмки")
+        }
+        if (selection.includeUndated) OutlinedTextField(selection.undatedGroupDateTime,
+            { onChange(selection.copy(undatedGroupDateTime = it)) },
+            label = { Text("Назначить группе дату и время · ГГГГ-ММ-ДДTЧЧ:ММ:СС") }, enabled = enabled,
+            modifier = Modifier.fillMaxWidth(), singleLine = true)
+        if (selection.includeUndated) Text("Оставьте поле пустым, чтобы включить фото с отметкой «Дата съёмки не определена».",
+            style = MaterialTheme.typography.bodySmall)
+    } }
 }
 
 @Composable
@@ -237,6 +300,7 @@ private fun PhotoDraftCard(photo: DraftPhoto, index: Int, total: Int, busy: Bool
                         CaptionSource.PHOTO_DESCRIPTION -> "Источник: описание фотографии"
                         CaptionSource.MISSING -> "Источник: не заполнен"
                     }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Съёмка: ${readableReportDateTime(photo.capturedAtLocal, photo.capturedOffsetMinutes)}", style = MaterialTheme.typography.bodySmall)
                     if (photo.selected && photo.description.isBlank())
                         Text("Описание отсутствует", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }

@@ -66,4 +66,20 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE points ADD COLUMN isFixed INTEGER NOT NULL DEFAULT 0")
         }
     }
+
+    val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE points ADD COLUMN displayNumber INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("""UPDATE points SET displayNumber = (
+                SELECT COUNT(*) FROM points AS earlier
+                WHERE earlier.drawingId = points.drawingId
+                  AND earlier.pageNumber = points.pageNumber
+                  AND earlier.isArchived = 0
+                  AND earlier.id <= points.id
+            )""".trimIndent())
+            db.execSQL("ALTER TABLE photos ADD COLUMN capturedAtLocal TEXT")
+            db.execSQL("ALTER TABLE photos ADD COLUMN capturedOffsetMinutes INTEGER")
+            db.execSQL("ALTER TABLE photos ADD COLUMN captureMetadataChecked INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }
