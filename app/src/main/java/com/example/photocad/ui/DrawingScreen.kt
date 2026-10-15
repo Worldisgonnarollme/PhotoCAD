@@ -342,16 +342,17 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
     if (choosingDeleteScope) {
         AlertDialog(
             onDismissRequest = { choosingDeleteScope = false },
-            title = { Text("Удалить точки?") },
+            title = { Text("Удалить точки?", color = MaterialTheme.colorScheme.onSurface, fontSize = 20.sp) },
             text = {
                 Column {
-                    Text("Вместе с точками удалятся их фотографии. Это действие нельзя будет отменить.")
+                    Text("Вместе с точками удалятся их фотографии. Это действие нельзя будет отменить.",
+                        color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, lineHeight = 24.sp)
                     Spacer(Modifier.height(8.dp))
                     TextButton(onClick = { choosingDeleteScope = false; deletePoints(onlyCurrentPage = false) }) {
-                        Text("Удалить точки на всех страницах")
+                        Text("Удалить точки на всех страницах", fontSize = 16.sp)
                     }
                     TextButton(onClick = { choosingDeleteScope = false; deletePoints(onlyCurrentPage = true) }) {
-                        Text("Удалить точки на текущей странице")
+                        Text("Удалить точки на текущей странице", fontSize = 16.sp)
                     }
                 }
             },
