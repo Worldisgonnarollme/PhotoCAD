@@ -78,6 +78,17 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
     var localMessage by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf(false) }
     val busy = attachmentState.busy
+    // Text typed into a description field but not yet confirmed with its own button.
+    val drafts = remember(point.id) { mutableStateMapOf<Long, String>() }
+
+    fun saveEverything() {
+        val pending = photos.filter { photo -> drafts[photo.id]?.takeIf { it != photo.description.orEmpty() } != null }
+        scope.launch {
+            pending.forEach { photo -> db.photoDao().updateDescription(photo.id, drafts.getValue(photo.id)) }
+            localMessage = if (pending.isEmpty()) "Все данные точки сохранены"
+            else "Данные сохранены. Описаний обновлено: ${pending.size}."
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -98,13 +109,27 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 when (tab) {
                     PointTab.POINT -> PointTabContent(db, point, displayIndex, scope, drawing, model, busy)
-                    PointTab.PHOTO -> PhotoTabContent(context, scope, model, photos, point, busy) { localMessage = it }
-                }
-                (localMessage ?: attachmentState.message)?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp))
+                    PointTab.PHOTO -> PhotoTabContent(context, scope, model, photos, point, busy,
+                        onDraftChange = { id, text -> drafts[id] = text }) { localMessage = it }
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+            }
+
+            // Outside the scrolling area: a confirmation the user never has to scroll to find.
+            (localMessage ?: attachmentState.message)?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp))
+            }
+
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp)
+                    .clickable(enabled = !busy) { saveEverything() }
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                    .padding(vertical = 14.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Сохранить", color = MaterialTheme.colorScheme.onPrimary)
             }
 
             Row(
@@ -285,6 +310,7 @@ private fun PhotoTabContent(
     photos: List<Photo>,
     point: Point,
     busy: Boolean,
+    onDraftChange: (Long, String) -> Unit,
     onMessage: (String?) -> Unit
 ) {
     var pendingCameraPath by rememberSaveable(point.id) { mutableStateOf<String?>(null) }
@@ -454,7 +480,8 @@ private fun PhotoTabContent(
                             OutlinedButton(enabled = !busy && pendingCameraPath == null,
                                 onClick = { launchGallery(photo.id) }, modifier = Modifier.weight(1f)) { Text("Заменить из галереи") }
                         }
-                        PhotoDescriptionEditor(photo.id, photo.description, busy) { description ->
+                        PhotoDescriptionEditor(photo.id, photo.description, busy,
+                            onDraftChange = { onDraftChange(photo.id, it) }) { description ->
                             onMessage(null)
                             model.saveDescription(photo.id, description)
                         }

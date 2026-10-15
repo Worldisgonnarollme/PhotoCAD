@@ -14,6 +14,7 @@ import com.example.photocad.data.Point
 import com.example.photocad.data.Site
 import com.example.photocad.ui.PointEditorScreen
 import com.example.photocad.ui.theme.PhotoCADTheme
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -21,6 +22,34 @@ import java.io.File
 
 class PointPhotoPagerTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun saveButtonStoresTextTypedWithoutPressingThePerPhotoButton() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val file = File.createTempFile("save", ".png", context.cacheDir).also { target ->
+            val bitmap = Bitmap.createBitmap(120, 160, Bitmap.Config.ARGB_8888)
+            try { bitmap.eraseColor(Color.GREEN); target.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+            finally { bitmap.recycle() }
+        }
+        try {
+            val point = runBlocking {
+                val drawingId = db.drawingDao().insert(Drawing(name = "План", filePath = "missing-drawing", siteId = 1))
+                val pointId = db.pointDao().insert(Point(drawingId = drawingId, x = 0.5f, y = 0.5f))
+                db.photoDao().insert(Photo(pointId = pointId, filePath = file.path, description = null))
+                db.pointDao().getById(pointId)!!
+            }
+            compose.setContent { PhotoCADTheme(AppThemeMode.LIGHT) { PointEditorScreen(db, point, 1, true) {} } }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Описание фотографии").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Описание фотографии").performTextReplacement("Набрано без подтверждения")
+            // Deliberately skip "Сохранить описание фотографии" and use the screen's own button,
+            // which sits outside the scrolling area and so needs no scrolling to reach.
+            compose.onNodeWithText("Сохранить").performClick()
+            compose.waitUntil(10000) {
+                runBlocking { db.photoDao().getByPoint(point.id).first().single().description } == "Набрано без подтверждения"
+            }
+            compose.onNodeWithText("Данные сохранены. Описаний обновлено: 1.").assertExists()
+        } finally { db.close(); file.delete() }
+    }
 
     @Test fun existingPhotosAppearAsSeparateCardsWithDirectGalleryAdd() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
