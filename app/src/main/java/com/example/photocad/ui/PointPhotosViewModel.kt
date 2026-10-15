@@ -120,11 +120,6 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
         null
     }
 
-    fun saveDescription(photoId: Long, description: String) = perform("Описание фотографии сохранено") {
-        if (db.photoDao().updateDescription(photoId, description) != 1) error("Фотография недоступна")
-        null
-    }
-
     fun deletePhoto(photoId: Long) = perform("Фотография удалена") {
         if (db.photoDao().getById(photoId)?.pointId != pointId) error("Фотография недоступна")
         db.deletePhoto(photoId)

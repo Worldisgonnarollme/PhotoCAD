@@ -13,7 +13,7 @@ class DescriptionEditorTest {
     @Test fun untouchedFieldFollowsTheStoredTextButDirtyTextSurvivesReloads() {
         val saved = mutableStateOf<String?>("Сохранённое")
         compose.setContent { MaterialTheme {
-            PhotoDescriptionEditor(1, saved.value, false) { }
+            PhotoDescriptionEditor(1, saved.value, false, onDraftChange = { })
         } }
         compose.onNodeWithText("Описание фотографии").assertTextContains("Сохранённое")
         compose.runOnIdle { saved.value = "Обновлённое" }

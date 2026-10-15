@@ -81,21 +81,31 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
     // Text typed into a description field but not yet confirmed with its own button.
     val drafts = remember(point.id) { mutableStateMapOf<Long, String>() }
 
-    fun saveEverything() {
+    // Colour and photos are written the moment they change; only the typed descriptions wait here.
+    suspend fun persistDrafts(): Int {
         val pending = photos.filter { photo -> drafts[photo.id]?.takeIf { it != photo.description.orEmpty() } != null }
+        pending.forEach { photo -> db.photoDao().updateDescription(photo.id, drafts.getValue(photo.id)) }
+        return pending.size
+    }
+
+    fun saveEverything() {
         scope.launch {
-            pending.forEach { photo -> db.photoDao().updateDescription(photo.id, drafts.getValue(photo.id)) }
-            localMessage = if (pending.isEmpty()) "Все данные точки сохранены"
-            else "Данные сохранены. Описаний обновлено: ${pending.size}."
+            val updated = persistDrafts()
+            localMessage = if (updated == 0) "Все данные точки сохранены"
+            else "Данные сохранены. Описаний обновлено: $updated."
         }
     }
+
+    // Leaving must not lose text either, so the arrow saves before it navigates.
+    fun saveAndLeave() = scope.launch { persistDrafts(); onBack() }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Точка $displayIndex") },
-                // Colour and photo descriptions save themselves, so there is nothing left to confirm.
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } }
+                navigationIcon = {
+                    IconButton(onClick = { saveAndLeave() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") }
+                }
             )
         }
     ) { padding ->
@@ -480,11 +490,7 @@ private fun PhotoTabContent(
                             OutlinedButton(enabled = !busy && pendingCameraPath == null,
                                 onClick = { launchGallery(photo.id) }, modifier = Modifier.weight(1f)) { Text("Заменить из галереи") }
                         }
-                        PhotoDescriptionEditor(photo.id, photo.description, busy,
-                            onDraftChange = { onDraftChange(photo.id, it) }) { description ->
-                            onMessage(null)
-                            model.saveDescription(photo.id, description)
-                        }
+                        PhotoDescriptionEditor(photo.id, photo.description, busy) { onDraftChange(photo.id, it) }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
