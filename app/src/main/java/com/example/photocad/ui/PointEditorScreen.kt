@@ -57,13 +57,29 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.UUID
 
 private enum class PointTab(val label: String) { POINT("Точка"), PHOTO("Фото") }
 
+private fun parseManualCaptureTime(dateText: String, timeText: String): Pair<String, Int?>? {
+    val date = dateText.trim()
+    val time = timeText.trim()
+    if (!Regex("\\d{4}-\\d{2}-\\d{2}").matches(date) || !Regex("\\d{2}:\\d{2}").matches(time)) return null
+    val input = "$date $time"
+    val parser = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).apply {
+        isLenient = false
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }
+    val instant = runCatching { parser.parse(input) }.getOrNull() ?: return null
+    if (parser.format(instant) != input) return null
+    return "${date}T${time}:00" to null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnPhotoTab: Boolean, onBack: () -> Unit) {
+fun PointEditorScreen(db: AppDatabase, point: Point, displayNumber: Int, startOnPhotoTab: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var tab by rememberSaveable(point.id) { mutableStateOf(if (startOnPhotoTab) PointTab.PHOTO else PointTab.POINT) }
@@ -93,7 +109,7 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Точка $displayIndex") },
+                title = { Text("Точка $displayNumber") },
                 navigationIcon = {
                     IconButton(onClick = { saveAndLeave() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") }
                 }
@@ -109,8 +125,8 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
 
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 when (tab) {
-                    PointTab.POINT -> PointTabContent(db, point, displayIndex, scope, drawing, model, busy)
-                    PointTab.PHOTO -> PhotoTabContent(context, scope, model, photos, point, busy,
+                    PointTab.POINT -> PointTabContent(db, point, displayNumber, scope, drawing, model, busy)
+                    PointTab.PHOTO -> PhotoTabContent(context, db, scope, model, photos, point, busy,
                         onDraftChange = { id, text -> drafts[id] = text }) { localMessage = it }
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
@@ -162,7 +178,7 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
 private fun PointTabContent(
     db: AppDatabase,
     point: Point,
-    displayIndex: Int,
+    displayNumber: Int,
     scope: kotlinx.coroutines.CoroutineScope,
     drawing: Drawing?,
     model: PointPhotosViewModel,
@@ -188,13 +204,13 @@ private fun PointTabContent(
             Spacer(Modifier.height(20.dp))
             Text("Переместить точку", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
-            MiniDraggableMap(db = db, point = point, displayIndex = displayIndex, drawing = drawing, colorIndex = point.colorIndex, scope = scope)
+            MiniDraggableMap(db = db, point = point, displayNumber = displayNumber, drawing = drawing, colorIndex = point.colorIndex, scope = scope)
         }
     }
 }
 
 @Composable
-private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, drawing: Drawing?, colorIndex: Int, scope: kotlinx.coroutines.CoroutineScope) {
+private fun MiniDraggableMap(db: AppDatabase, point: Point, displayNumber: Int, drawing: Drawing?, colorIndex: Int, scope: kotlinx.coroutines.CoroutineScope) {
     var preview by remember(drawing?.filePath, point.pageNumber) { mutableStateOf<Pair<Bitmap, android.util.Size>?>(null) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
     var dragOffsetPx by remember(point.id) { mutableStateOf<Offset?>(null) }
@@ -264,7 +280,11 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
                     .offset(x = with(density) { currentPx.x.toDp() } - MARKER_SIZE / 2, y = with(density) { currentPx.y.toDp() } - MARKER_SIZE / 2)
                     .size(MARKER_SIZE)
                     .background(pointColors[colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
-                    .pointerInput(point.id, rect) {
+                    .then(if (point.isFixed) Modifier
+                        .border(3.dp, Color.Black, CircleShape)
+                        .border(1.dp, Color.White, CircleShape) else Modifier)
+                    .pointerInput(point.id, rect, point.isFixed) {
+                        if (point.isFixed) return@pointerInput
                         detectDragGestures(
                             onDragStart = { dragOffsetPx = latestTransform?.pageToScreen(Offset(point.x, point.y)) },
                             onDrag = { change, dragAmount ->
@@ -284,7 +304,13 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
                         )
                     },
                 contentAlignment = Alignment.Center
-            ) { Text("$displayIndex", color = Color.White, style = MaterialTheme.typography.labelSmall) }
+            ) { Text("$displayNumber", color = Color.White, style = MaterialTheme.typography.labelSmall) }
+        }
+        if (point.isFixed) {
+            OutlinedButton(
+                onClick = { scope.launch { db.pointDao().setFixed(point.id, false) } },
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+            ) { Text("Открепить") }
         }
         Column(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             IconButton(onClick = {
@@ -306,6 +332,7 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
 @Composable
 private fun PhotoTabContent(
     context: android.content.Context,
+    db: AppDatabase,
     scope: kotlinx.coroutines.CoroutineScope,
     model: PointPhotosViewModel,
     photos: List<Photo>,
@@ -322,7 +349,50 @@ private fun PhotoTabContent(
     var pendingCameraReplaceId by rememberSaveable(point.id) { mutableStateOf<Long?>(null) }
     var photoToDelete by remember(point.id) { mutableStateOf<Long?>(null) }
     var photoToPreview by remember(point.id) { mutableStateOf<Photo?>(null) }
+    var photoToEditTime by remember(point.id) { mutableStateOf<Photo?>(null) }
     var showAddChoices by remember(point.id) { mutableStateOf(false) }
+
+    photoToEditTime?.let { photo ->
+        var dateInput by remember(photo.id) { mutableStateOf(photo.capturedAtLocal?.take(10).orEmpty()) }
+        var timeInput by remember(photo.id) {
+            mutableStateOf(photo.capturedAtLocal?.takeIf { it.length >= 16 }?.substring(11, 16).orEmpty())
+        }
+        var dateError by remember(photo.id) { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { photoToEditTime = null },
+            title = { Text("Дата и время съёмки") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(dateInput, { dateInput = it; dateError = false },
+                        label = { Text("Дата (ГГГГ-ММ-ДД)") }, singleLine = true)
+                    OutlinedTextField(timeInput, { timeInput = it; dateError = false },
+                        label = { Text("Время (ЧЧ:ММ)") }, singleLine = true)
+                    if (dateError) Text("Проверьте дату и время", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val capture = parseManualCaptureTime(dateInput, timeInput)
+                    if (capture == null) {
+                        dateError = true
+                    } else {
+                        photoToEditTime = null
+                        scope.launch {
+                            try {
+                                db.photoDao().updateCaptureTime(photo.id, capture.first, capture.second)
+                                onMessage(null)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                onMessage("Не удалось сохранить дату съёмки: ${failure.message}")
+                            }
+                        }
+                    }
+                }) { Text("Сохранить") }
+            },
+            dismissButton = { TextButton(onClick = { photoToEditTime = null }) { Text("Отмена") } }
+        )
+    }
 
     photoToPreview?.let { photo ->
         Dialog(onDismissRequest = { photoToPreview = null },
@@ -469,6 +539,13 @@ private fun PhotoTabContent(
                                 Text("Фотография ${index + 1}", style = MaterialTheme.typography.titleMedium)
                                 Text("Фото ${index + 1} из ${photos.size}", style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(photo.capturedAtLocal?.takeIf { it.isNotBlank() }?.replace('T', ' ')
+                                    ?: "Дата съёмки не определена",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                TextButton(onClick = { photoToEditTime = photo }, enabled = !busy) {
+                                    Text("Изменить дату и время")
+                                }
                             }
                             IconButton(onClick = { photoToDelete = photo.id }, enabled = !busy) {
                                 Icon(Icons.Default.Delete, contentDescription = "Удалить фотографию ${index + 1}",

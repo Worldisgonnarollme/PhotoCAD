@@ -15,12 +15,17 @@ data class PdfPhoto(
     val pointX: Float = 0.5f,
     val pointY: Float = 0.5f,
     val colorIndex: Int = 0,
+    val capturedAtLocal: String? = null,
     // Position among the photos of this point that actually made it into the album.
     val photoIndexInPoint: Int = 1,
-    val photoCountInPoint: Int = 1
+    val photoCountInPoint: Int = 1,
+    val capturedOffsetMinutes: Int? = null
 )
 data class GeneratedReport(val file: File, val photoCount: Int, val pageCount: Int)
 class ReportException(message: String, cause: Throwable? = null) : IOException(message, cause)
+
+fun photoServiceLine(photo: PdfPhoto, globalPhotoNumber: Int): String =
+    "${photo.drawingName} • лист ${photo.drawingPage} • Точка №${photo.pointNumber} • Фото №$globalPhotoNumber"
 
 data class DraftPhoto(
     val photoId: Long,
@@ -35,7 +40,10 @@ data class DraftPhoto(
     val pointX: Float = 0.5f,
     val pointY: Float = 0.5f,
     val colorIndex: Int = 0,
-    val captionSource: CaptionSource = CaptionSource.MISSING
+    val captionSource: CaptionSource = CaptionSource.MISSING,
+    val drawingId: Long = 0,
+    val capturedAtLocal: String? = null,
+    val capturedOffsetMinutes: Int? = null
 )
 
 enum class CaptionSource { PHOTO_DESCRIPTION, MISSING }
@@ -60,8 +68,8 @@ fun reportInput(photos: List<DraftPhoto>): List<PdfPhoto> {
         val position = (seenByPoint[it.pointId] ?: 0) + 1
         seenByPoint[it.pointId] = position
         PdfPhoto(it.filePath, it.description, it.pointNumber, it.drawingPage,
-            it.drawingPath, it.drawingName, it.pointX, it.pointY, it.colorIndex,
-            position, countByPoint.getValue(it.pointId))
+            it.drawingPath, it.drawingName, it.pointX, it.pointY, it.colorIndex, it.capturedAtLocal,
+            position, countByPoint.getValue(it.pointId), it.capturedOffsetMinutes)
     }
 }
 
@@ -74,7 +82,9 @@ fun numberPointsForReport(points: List<Point>, photos: List<DraftPhoto>): List<D
     val ordinals = points.associate { point ->
         val next = (nextByPage[point.pageNumber] ?: 0) + 1
         nextByPage[point.pageNumber] = next
-        point.id to next
+        point.id to point.displayNumber.takeIf { it > 0 }?.also { number ->
+            nextByPage[point.pageNumber] = maxOf(next, number)
+        }.let { it ?: next }
     }
     return photos.map { it.copy(pointNumber = ordinals[it.pointId] ?: 1) }
 }

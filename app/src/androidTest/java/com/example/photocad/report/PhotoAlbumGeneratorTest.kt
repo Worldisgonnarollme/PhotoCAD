@@ -44,11 +44,15 @@ class PhotoAlbumGeneratorTest {
                     PdfPhoto(file.path, if (index == 0) "Русское описание 1" else
                         "Длинное описание выполненных работ и состояния объекта. ".repeat(4), pointNumber = 7,
                         drawingPath = drawing.path, pointX = 0.95f, pointY = 0.05f, colorIndex = 1)
-                }
+                },
+                displayName = "09.10 этаж 1.pdf"
             )
-            val output = PhotoAlbumGenerator(context).generate(input, context.cacheDir)
+            val output = PhotoAlbumGenerator(context).generate(input, ReportFileManager.directory(context))
             try {
                 assertEquals(4, output.pageCount)
+                assertEquals("09.10 этаж 1.pdf", output.file.name)
+                assertEquals("09.10 этаж 1.pdf", ReportFileManager.shareIntent(context, output.file)
+                    .clipData!!.getItemAt(0).uri.lastPathSegment)
                 PdfRenderer(ParcelFileDescriptor.open(output.file, ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer ->
                     assertEquals(4, renderer.pageCount)
                     renderer.openPage(2).use { pointPage ->

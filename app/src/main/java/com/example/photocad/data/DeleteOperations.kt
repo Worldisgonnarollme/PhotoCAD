@@ -24,11 +24,12 @@ suspend fun AppDatabase.deletePhoto(photoId: Long) {
 }
 
 /** Retake keeps the photo row and caption; the old file is removed only after the new path is stored. */
-suspend fun AppDatabase.replacePhotoFile(photoId: Long, pointId: Long, newPath: String) {
+suspend fun AppDatabase.replacePhotoFile(photoId: Long, pointId: Long, newPath: String, capture: CaptureTime = CaptureTime(null, null)) {
     val oldPath = withTransaction {
         val photo = photoDao().getById(photoId)?.takeIf { it.pointId == pointId }
             ?: error("Фотография недоступна")
         if (photoDao().updateFilePath(photoId, pointId, newPath) != 1) error("Не удалось заменить фотографию")
+        photoDao().updateCaptureTime(photoId, capture.localDateTime, capture.offsetMinutes)
         photo.filePath
     }
     if (oldPath != newPath) deleteFilesWhenUnreferenced(listOf(oldPath))

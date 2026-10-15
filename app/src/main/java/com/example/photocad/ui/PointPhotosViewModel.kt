@@ -45,10 +45,11 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
     }
 
     private suspend fun attach(path: String, preferences: PhotoPreferences, allowGallery: Boolean,
-                               cameraSource: String? = null, replacePhotoId: Long? = null): String? {
+                               cameraSource: String? = null, replacePhotoId: Long? = null,
+                               capture: CaptureTime = CaptureTime(null, null)): String? {
         withContext(Dispatchers.IO) { ReportImageLoader.load(path, 320).recycle() }
-        if (replacePhotoId == null) db.insertPhoto(pointId, path)
-        else db.replacePhotoFile(replacePhotoId, pointId, path)
+        if (replacePhotoId == null) db.insertPhoto(pointId, path, capture)
+        else db.replacePhotoFile(replacePhotoId, pointId, path, capture)
         var galleryWarning: String? = null
         if (preferences.saveToGallery) {
             if (!allowGallery) {
@@ -74,9 +75,10 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
     fun importGallery(uri: Uri, allowGallery: Boolean = true, replacePhotoId: Long? = null) =
         perform(if (replacePhotoId == null) "Фотография добавлена" else "Фотография заменена") {
         val preferences = UserPreferences.photoPreferencesFlow(getApplication()).first()
+        val capture = withContext(Dispatchers.IO) { readCaptureTime(getApplication(), uri) }
         val storedPath = importPhoto(getApplication(), uri, preferences)
         try {
-            attach(storedPath, preferences, allowGallery, replacePhotoId = replacePhotoId)
+            attach(storedPath, preferences, allowGallery, replacePhotoId = replacePhotoId, capture = capture)
         } catch (cancelled: CancellationException) {
             discardUnreferenced(storedPath)
             throw cancelled
@@ -94,9 +96,11 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
                 val preferences = UserPreferences.photoPreferencesFlow(getApplication()).first()
                 var storedPath: String? = null
                 try {
+                    val capture = withContext(Dispatchers.IO) { readCaptureTime(path) }
+                        .takeIf { it.localDateTime != null } ?: currentCameraCaptureTime()
                     val ready = storeCameraPhoto(getApplication(), path, preferences)
                     storedPath = ready
-                    attach(ready, preferences, allowGallery, cameraSource = path, replacePhotoId = replacePhotoId)
+                    attach(ready, preferences, allowGallery, cameraSource = path, replacePhotoId = replacePhotoId, capture = capture)
                 }
                 catch (cancelled: CancellationException) {
                     if (storedPath == null) withContext(NonCancellable + Dispatchers.IO) { File(path).delete() }

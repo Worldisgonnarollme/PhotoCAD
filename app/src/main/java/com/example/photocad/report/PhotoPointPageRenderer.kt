@@ -21,7 +21,8 @@ internal class PhotoPointPageRenderer : Closeable {
         strokeWidth = 0.8f
     }
 
-    suspend fun render(canvas: Canvas, photo: PdfPhoto, pageNumber: Int, totalPages: Int) {
+    suspend fun render(canvas: Canvas, photo: PdfPhoto, pageNumber: Int, totalPages: Int,
+                       generatedAtLocal: String = "", globalPhotoNumber: Int = 1) {
         canvas.drawColor(Color.WHITE)
         val drawingFrame = RectF(28f, 28f, 567f, 285f)
         val photoFrame = RectF(28f, 300f, 567f, 695f)
@@ -65,12 +66,14 @@ internal class PhotoPointPageRenderer : Closeable {
         canvas.drawRect(photoFrame, framePaint)
 
         // Sheet first: point numbers restart on every sheet, so the sheet is what tells them apart.
-        AlbumText.draw(canvas, "${photo.drawingName} • лист ${photo.drawingPage} • Точка №${photo.pointNumber}" +
-            " • фото ${photo.photoIndexInPoint} из ${photo.photoCountInPoint}", 28f, 704f, 539, 10f, bold = true)
+        AlbumText.draw(canvas, photoServiceLine(photo, globalPhotoNumber), 28f, 704f, 539, 10f, bold = true)
+        AlbumText.draw(canvas, "Съёмка: ${readableReportDateTime(photo.capturedAtLocal, photo.capturedOffsetMinutes)}", 28f, 718f, 539, 9f)
         val caption = photo.description.trim()
-        val size = listOf(11f, 10f, 9f, 8f).firstOrNull { AlbumText.height(caption, 539, it) <= 87 }
+        val size = listOf(11f, 10f, 9f, 8f).firstOrNull { AlbumText.height(caption, 539, it) <= 52 }
             ?: throw ReportException("Описание фотографии слишком длинное для страницы A4")
-        AlbumText.draw(canvas, caption, 28f, 723f, 539, size)
+        AlbumText.draw(canvas, caption, 28f, 736f, 539, size)
+        if (generatedAtLocal.isNotBlank()) AlbumText.draw(canvas,
+            "Сформировано: ${readableReportDateTime(generatedAtLocal)}", 28f, 798f, 539, 8f)
         AlbumText.draw(canvas, "Страница $pageNumber из $totalPages", 28f, 812f, 539, 9f, centered = true)
     }
 

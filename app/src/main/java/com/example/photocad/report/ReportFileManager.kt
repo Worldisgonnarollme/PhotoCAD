@@ -72,7 +72,10 @@ object ReportFileManager {
     suspend fun cleanOldCache(context: Context) = withContext(Dispatchers.IO) {
         val cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
         directory(context).listFiles()?.filter {
-            it.isFile && it.lastModified() < cutoff && (it.extension == "pdf" || it.extension == "part")
-        }?.forEach { it.delete() }
+            it.lastModified() < cutoff && (it.isDirectory || it.extension == "pdf" || it.extension == "part")
+        }?.forEach { old ->
+            if (old.isDirectory) old.listFiles()?.forEach { child -> if (child.isFile) child.delete() }
+            old.delete()
+        }
     }
 }

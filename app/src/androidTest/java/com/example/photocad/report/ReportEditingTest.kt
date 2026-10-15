@@ -28,8 +28,7 @@ class ReportEditingTest {
                 drawing
             }
             compose.setContent { MaterialTheme { ReportScreen(db, drawingId) {} } }
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Титульный лист").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Продолжить").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Состав фотоотчёта").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Выбрано: 2 • Страниц: 4").assertExists()
         } finally { db.close() }
     }
@@ -46,8 +45,7 @@ class ReportEditingTest {
             }
             var exited = false
             compose.setContent { MaterialTheme { ReportScreen(db, ids.first) { exited = true } } }
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Титульный лист").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Продолжить").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Состав фотоотчёта").fetchSemanticsNodes().isNotEmpty() }
             compose.waitUntil(10000) { compose.onAllNodesWithText("Описание фотографии").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Описание фотографии").performTextReplacement("Временно")
             assertNull(runBlocking { db.photoDao().getByPoint(ids.second).first().single().description })
@@ -72,8 +70,7 @@ class ReportEditingTest {
                 drawing
             }
             compose.setContent { MaterialTheme { ReportScreen(db, drawingId) {} } }
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Титульный лист").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Продолжить").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Состав фотоотчёта").fetchSemanticsNodes().isNotEmpty() }
             compose.waitUntil(10000) { compose.onAllNodesWithText("Описание отсутствует").fetchSemanticsNodes().isNotEmpty() }
             assertTrue(compose.onAllNodesWithText("Описание отсутствует").fetchSemanticsNodes().isNotEmpty())
             // The empty caption no longer blocks the step.

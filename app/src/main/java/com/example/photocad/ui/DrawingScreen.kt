@@ -3,6 +3,7 @@ package com.example.photocad.ui
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -120,7 +121,7 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
         PointEditorScreen(
             db = db,
             point = selectedPoint,
-            displayIndex = points.indexOf(selectedPoint) + 1,
+            displayNumber = selectedPoint.displayNumber,
             startOnPhotoTab = selectedPoint.id == newlyCreatedId,
             onBack = { selectedPointId = null; newlyCreatedId = null }
         )
@@ -197,12 +198,13 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                                         selectedPointId = nearby.id
                                     } else {
                                         val normalized = transform.screenToPage(screen) ?: return@detectTapGestures
+                                        val pageNumber = activePage
                                         scope.launch {
-                                            val id = db.pointDao().insert(Point(
+                                            val id = db.insertNumberedPoint(Point(
                                                 drawingId = drawingId,
                                                 x = normalized.x,
                                                 y = normalized.y,
-                                                pageNumber = activePage
+                                                pageNumber = pageNumber
                                             ))
                                             newlyCreatedId = id
                                             selectedPointId = id
@@ -225,7 +227,7 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                         }
                 ) {
                     if (showPoints) {
-                        points.forEachIndexed { index, point ->
+                        points.forEach { point ->
                             val density = LocalDensity.current
                             var dragScreen by remember(point.id, activePage) { mutableStateOf<Offset?>(null) }
                             val position = dragScreen ?: transform.pageToScreen(Offset(point.x, point.y))
@@ -236,6 +238,9 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                                 )
                                     .size(MARKER_SIZE)
                                     .background(pointColors[point.colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
+                                    .then(if (point.isFixed) Modifier
+                                        .border(3.dp, Color.Black, CircleShape)
+                                        .border(1.dp, Color.White, CircleShape) else Modifier)
                                     .pointerInput(point.id, point.isFixed) {
                                         // A fixed point attaches no drag detector at all, so it
                                         // cannot be nudged and the gesture falls through to panning.
@@ -264,7 +269,7 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("${index + 1}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("${point.displayNumber}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 DropdownMenu(expanded = menuPointId == point.id, onDismissRequest = { menuPointId = null }) {
                                     DropdownMenuItem(
                                         text = { Text("Закрепить") },
@@ -272,7 +277,7 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                                         onClick = { menuPointId = null; scope.launch { db.pointDao().setFixed(point.id, true) } }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Переместить") },
+                                        text = { Text("Открепить") },
                                         enabled = point.isFixed,
                                         onClick = { menuPointId = null; scope.launch { db.pointDao().setFixed(point.id, false) } }
                                     )
@@ -316,8 +321,10 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
 
         Row(
             Modifier.fillMaxWidth().padding(16.dp).clickable {
+                val pageNumber = activePage
                 scope.launch {
-                    val id = db.pointDao().insert(Point(drawingId = drawingId, x = 0.5f, y = 0.5f, pageNumber = activePage))
+                    val id = db.insertNumberedPoint(Point(drawingId = drawingId, x = 0.5f, y = 0.5f,
+                        pageNumber = pageNumber))
                     newlyCreatedId = id
                     selectedPointId = id
                 }

@@ -1,6 +1,7 @@
 package com.example.photocad
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -18,9 +19,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.ui.Modifier
 import com.example.photocad.ui.report.ReportScreen
+import com.example.photocad.ui.report.SiteReportScreen
 import com.example.photocad.data.AppDatabase
+import com.example.photocad.data.backfillCaptureMetadata
 import com.example.photocad.data.AppThemeMode
 import com.example.photocad.data.UserPreferences
 import com.example.photocad.ui.DrawingListScreen
@@ -31,11 +35,19 @@ import com.example.photocad.ui.profile.ProfileViewModel
 import com.example.photocad.ui.profile.RegistrationScreen
 import com.example.photocad.ui.settings.SettingsScreen
 import com.example.photocad.ui.theme.PhotoCADTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val db = AppDatabase.getInstance(this) // создание бд при старте
+        lifecycleScope.launch(Dispatchers.IO) {
+            try { db.backfillCaptureMetadata() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { Log.w("PhotoCAD", "Could not check legacy photo metadata", failure) }
+        }
         setContent {
             val themeMode by UserPreferences.themeModeFlow(this@MainActivity)
                 .collectAsState(initial = AppThemeMode.SYSTEM)
@@ -139,8 +151,11 @@ private fun ObjectsTab(db: AppDatabase) {
     var selectedSiteId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedDrawingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var reportOpen by rememberSaveable { mutableStateOf(false) }
+    var siteReportId by rememberSaveable { mutableStateOf<Long?>(null) }
     when {
-        selectedSiteId == null -> SiteListScreen(db = db, onOpenSite = { selectedSiteId = it })
+        siteReportId != null -> SiteReportScreen(db, siteReportId!!, onBack = { siteReportId = null })
+        selectedSiteId == null -> SiteListScreen(db = db, onOpenSite = { selectedSiteId = it },
+            onSiteReport = { siteReportId = it })
         selectedDrawingId != null && reportOpen -> ReportScreen(db, selectedDrawingId!!, onBack = { reportOpen = false })
         selectedDrawingId == null -> DrawingListScreen(
             db = db,
