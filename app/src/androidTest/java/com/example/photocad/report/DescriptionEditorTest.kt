@@ -10,16 +10,16 @@ import org.junit.Test
 
 class DescriptionEditorTest {
     @get:Rule val compose = createComposeRule()
-    @Test fun untouchedFallbackRefreshesButDirtyTextSurvivesCommentChanges() {
-        val comment = mutableStateOf("Старый комментарий")
+    @Test fun untouchedFieldFollowsTheStoredTextButDirtyTextSurvivesReloads() {
+        val saved = mutableStateOf<String?>("Сохранённое")
         compose.setContent { MaterialTheme {
-            PhotoDescriptionEditor(1, null, comment.value, false) { }
+            PhotoDescriptionEditor(1, saved.value, false, onDraftChange = { })
         } }
-        compose.onNodeWithText("Описание фотографии").assertTextContains("Старый комментарий")
-        compose.runOnIdle { comment.value = "Новый комментарий" }
-        compose.onNodeWithText("Описание фотографии").assertTextContains("Новый комментарий")
+        compose.onNodeWithText("Описание фотографии").assertTextContains("Сохранённое")
+        compose.runOnIdle { saved.value = "Обновлённое" }
+        compose.onNodeWithText("Описание фотографии").assertTextContains("Обновлённое")
         compose.onNodeWithText("Описание фотографии").performTextReplacement("Своя правка")
-        compose.runOnIdle { comment.value = "Ещё один комментарий" }
+        compose.runOnIdle { saved.value = "Ещё одно" }
         compose.onNodeWithText("Описание фотографии").assertTextContains("Своя правка")
     }
 }

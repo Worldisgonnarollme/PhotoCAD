@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ZoomIn
@@ -40,8 +41,13 @@ import kotlinx.coroutines.launch
 
 val pointColors = (0 until PointColors.size).map { Color(PointColors.argb(it)) }
 
-private const val MIN_SCALE = 1f
-private const val MAX_SCALE = 3f
+// Shared with PointEditorScreen so both views of the drawing zoom the same way.
+const val MIN_SCALE = 1f
+const val MAX_SCALE = 8f
+
+// Markers keep this on-screen size at every zoom level, so they cover less of the
+// drawing the closer you get.
+val MARKER_SIZE = 20.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +65,10 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
     var selectedPointId by rememberSaveable(drawingId) { mutableStateOf<Long?>(null) }
     var newlyCreatedId by rememberSaveable(drawingId) { mutableStateOf<Long?>(null) }
     var draggedPointId by remember { mutableStateOf<Long?>(null) }
+    var menuPointId by remember { mutableStateOf<Long?>(null) }
+    var confirmingDeleteId by remember { mutableStateOf<Long?>(null) }
+    var choosingDeleteScope by remember { mutableStateOf(false) }
+    var confirmingDeleteAll by remember { mutableStateOf(false) }
     var showPoints by rememberSaveable(drawingId) { mutableStateOf(true) }
     var scale by rememberSaveable(drawingId) { mutableFloatStateOf(1f) }
     var pan by remember(drawingId) { mutableStateOf(Offset.Zero) }
@@ -99,7 +109,8 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
         val reader = document ?: return@produceState
         if (renderSize.width <= 0 || renderSize.height <= 0) return@produceState
         try {
-            value = reader.renderPage(activePage, maxOf(renderSize.width, renderSize.height) * 2)
+            // Capped so a big viewport cannot ask for a bitmap large enough to exhaust memory.
+            value = reader.renderPage(activePage, (maxOf(renderSize.width, renderSize.height) * 2).coerceAtMost(3200))
         } catch (failure: Exception) {
             pageError = "Не удалось показать страницу $activePage: ${failure.message}"
         }
@@ -115,6 +126,16 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
             onBack = { selectedPointId = null; newlyCreatedId = null }
         )
         return
+    }
+
+    // Archived points are deliberately left alone: they are invisible here, so wiping them
+    // from this screen would destroy evidence the user cannot even see.
+    fun deletePoints(onlyCurrentPage: Boolean) {
+        scope.launch {
+            val ids = if (onlyCurrentPage) points.map { it.id }
+            else db.pointDao().getActiveByDrawing(drawingId).map { it.id }
+            ids.forEach { db.deletePoint(it) }
+        }
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -157,29 +178,34 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                 Box(
                     Modifier.fillMaxSize()
                         .pointerInput(transform, points, pageRect) {
-                            detectTapGestures { screen ->
-                                val nearby = points.firstOrNull { point ->
-                                    val marker = transform.pageToScreen(Offset(point.x, point.y))
-                                    val dx = marker.x - screen.x
-                                    val dy = marker.y - screen.y
-                                    dx * dx + dy * dy < 32f * 32f
-                                }
-                                if (nearby != null) {
-                                    selectedPointId = nearby.id
-                                } else {
-                                    val normalized = transform.screenToPage(screen) ?: return@detectTapGestures
-                                    scope.launch {
-                                        val id = db.pointDao().insert(Point(
-                                            drawingId = drawingId,
-                                            x = normalized.x,
-                                            y = normalized.y,
-                                            pageNumber = activePage
-                                        ))
-                                        newlyCreatedId = id
-                                        selectedPointId = id
+                            fun pointAt(screen: Offset) = points.firstOrNull { point ->
+                                val marker = transform.pageToScreen(Offset(point.x, point.y))
+                                val dx = marker.x - screen.x
+                                val dy = marker.y - screen.y
+                                dx * dx + dy * dy < 32f * 32f
+                            }
+                            detectTapGestures(
+                                // Long press opens the point menu; a plain tap keeps opening the card.
+                                onLongPress = { screen -> pointAt(screen)?.let { menuPointId = it.id } },
+                                onTap = { screen ->
+                                    val nearby = pointAt(screen)
+                                    if (nearby != null) {
+                                        selectedPointId = nearby.id
+                                    } else {
+                                        val normalized = transform.screenToPage(screen) ?: return@detectTapGestures
+                                        scope.launch {
+                                            val id = db.pointDao().insert(Point(
+                                                drawingId = drawingId,
+                                                x = normalized.x,
+                                                y = normalized.y,
+                                                pageNumber = activePage
+                                            ))
+                                            newlyCreatedId = id
+                                            selectedPointId = id
+                                        }
                                     }
                                 }
-                            }
+                            )
                         }
                         .pointerInput(pageRect, viewportSize) {
                             detectTransformGestures { centroid, drag, zoom, _ ->
@@ -201,12 +227,15 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                             val position = dragScreen ?: transform.pageToScreen(Offset(point.x, point.y))
                             Box(
                                 Modifier.offset(
-                                    x = with(density) { position.x.toDp() } - 14.dp,
-                                    y = with(density) { position.y.toDp() } - 14.dp
+                                    x = with(density) { position.x.toDp() } - MARKER_SIZE / 2,
+                                    y = with(density) { position.y.toDp() } - MARKER_SIZE / 2
                                 )
-                                    .size(28.dp)
+                                    .size(MARKER_SIZE)
                                     .background(pointColors[point.colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
-                                    .pointerInput(point.id) {
+                                    .pointerInput(point.id, point.isFixed) {
+                                        // A fixed point attaches no drag detector at all, so it
+                                        // cannot be nudged and the gesture falls through to panning.
+                                        if (point.isFixed) return@pointerInput
                                         detectDragGestures(
                                             onDragStart = {
                                                 draggedPointId = point.id
@@ -230,7 +259,25 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
                                         )
                                     },
                                 contentAlignment = Alignment.Center
-                            ) { Text("${index + 1}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            ) {
+                                Text("${index + 1}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                DropdownMenu(expanded = menuPointId == point.id, onDismissRequest = { menuPointId = null }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Закрепить") },
+                                        enabled = !point.isFixed,
+                                        onClick = { menuPointId = null; scope.launch { db.pointDao().setFixed(point.id, true) } }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Переместить") },
+                                        enabled = point.isFixed,
+                                        onClick = { menuPointId = null; scope.launch { db.pointDao().setFixed(point.id, false) } }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Удалить") },
+                                        onClick = { menuPointId = null; confirmingDeleteId = point.id }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -241,14 +288,14 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
 
             Column(Modifier.align(Alignment.TopEnd).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 IconButton(onClick = {
-                    val next = (scale + 0.25f).coerceAtMost(MAX_SCALE)
+                    val next = (scale * 1.5f).coerceAtMost(MAX_SCALE)
                     scale = next
                     pageRect?.let { pan = clampPagePan(pan, next, it, Offset(viewportSize.width.toFloat(), viewportSize.height.toFloat())) }
                 }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))) {
                     Icon(Icons.Default.ZoomIn, contentDescription = "Приблизить")
                 }
                 IconButton(onClick = {
-                    val next = (scale - 0.25f).coerceAtLeast(MIN_SCALE)
+                    val next = (scale / 1.5f).coerceAtLeast(MIN_SCALE)
                     scale = next
                     pageRect?.let { pan = clampPagePan(pan, next, it, Offset(viewportSize.width.toFloat(), viewportSize.height.toFloat())) }
                 }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))) {
@@ -277,5 +324,55 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
             Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
             Text("Добавить точку", color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(start = 8.dp))
         }
+
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                // One page has nothing to choose between, so it goes straight to the confirmation.
+                .clickable { if (pageCount > 1) choosingDeleteScope = true else confirmingDeleteAll = true }
+                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                .padding(vertical = 14.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+            Text("Удалить точки", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+
+    if (choosingDeleteScope) {
+        AlertDialog(
+            onDismissRequest = { choosingDeleteScope = false },
+            title = { Text("Удалить точки?", color = MaterialTheme.colorScheme.onSurface, fontSize = 20.sp) },
+            text = {
+                Column {
+                    Text("Вместе с точками удалятся их фотографии. Это действие нельзя будет отменить.",
+                        color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, lineHeight = 24.sp)
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { choosingDeleteScope = false; deletePoints(onlyCurrentPage = false) }) {
+                        Text("Удалить точки на всех страницах", fontSize = 16.sp)
+                    }
+                    TextButton(onClick = { choosingDeleteScope = false; deletePoints(onlyCurrentPage = true) }) {
+                        Text("Удалить точки на текущей странице", fontSize = 16.sp)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { choosingDeleteScope = false }) { Text("Отмена") } }
+        )
+    }
+    if (confirmingDeleteAll) {
+        ConfirmDialog(
+            text = "Вы точно хотите удалить все точки? Вместе с ними удалятся их фотографии. Это действие нельзя будет отменить.",
+            onConfirm = { confirmingDeleteAll = false; deletePoints(onlyCurrentPage = false) },
+            onDismiss = { confirmingDeleteAll = false }
+        )
+    }
+
+    confirmingDeleteId?.let { id ->
+        ConfirmDialog(
+            text = "Вы уверены, что хотите удалить точку?",
+            onConfirm = { confirmingDeleteId = null; scope.launch { db.deletePoint(id) } },
+            onDismiss = { confirmingDeleteId = null }
+        )
     }
 }

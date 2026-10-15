@@ -52,7 +52,9 @@ data class Point(
     @ColumnInfo(defaultValue = "1") val pageNumber: Int = 1,
     @ColumnInfo(defaultValue = "''") val comment: String = "",
     @ColumnInfo(defaultValue = "0") val colorIndex: Int = 0,
-    @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false
+    @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false,
+    // Fixed points stay put: dragging them on the drawing does nothing.
+    @ColumnInfo(defaultValue = "0") val isFixed: Boolean = false
 )
 
 @Entity(tableName = "photos", indices = [Index("pointId")])

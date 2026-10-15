@@ -190,7 +190,8 @@ private class PdfDrawingDocument(private val file: File) : DrawingDocument {
         require(maxWidth > 0)
         withRenderer { renderer ->
             renderer.openPage(pageNumber - 1).use { page ->
-                val scale = (maxWidth.toFloat() / maxOf(page.width, page.height)).coerceAtMost(1f)
+                // PDF is vector, so rendering above the page's own point size keeps zoom sharp.
+                val scale = maxWidth.toFloat() / maxOf(page.width, page.height)
                 val width = (page.width * scale).toInt().coerceAtLeast(1)
                 val height = (page.height * scale).toInt().coerceAtLeast(1)
                 Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->

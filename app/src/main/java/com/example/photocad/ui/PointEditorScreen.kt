@@ -59,7 +59,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
-private enum class PointTab(val label: String) { POINT("Точка"), PHOTO("Фото"), COMMENT("Комментарий") }
+private enum class PointTab(val label: String) { POINT("Точка"), PHOTO("Фото") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,18 +75,27 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
     val model: PointPhotosViewModel = viewModel(key = "point-photos-${point.id}",
         factory = PointPhotosViewModel.Factory(context.applicationContext as Application, db, point.id))
     val attachmentState by model.state.collectAsState()
-    var comment by rememberSaveable(point.id) { mutableStateOf(point.comment) }
     var localMessage by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf(false) }
     val busy = attachmentState.busy
+    // Text typed into a description field but not yet confirmed with its own button.
+    val drafts = remember(point.id) { mutableStateMapOf<Long, String>() }
+
+    // Colour and photos are written the moment they change; only the typed descriptions wait here.
+    // Both the button and the arrow do the same thing: store the typed text, then go back to
+    // the drawing. Colour and photos were already written when they changed.
+    fun saveAndLeave() = scope.launch {
+        photos.filter { photo -> drafts[photo.id]?.takeIf { it != photo.description.orEmpty() } != null }
+            .forEach { photo -> db.photoDao().updateDescription(photo.id, drafts.getValue(photo.id)) }
+        onBack()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Точка $displayIndex") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } },
-                actions = {
-                    TextButton(onClick = { scope.launch { model.saveComment(comment) }; onBack() }) { Text("Сохранить") }
+                navigationIcon = {
+                    IconButton(onClick = { saveAndLeave() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") }
                 }
             )
         }
@@ -101,14 +110,27 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 when (tab) {
                     PointTab.POINT -> PointTabContent(db, point, displayIndex, scope, drawing, model, busy)
-                    PointTab.PHOTO -> PhotoTabContent(context, scope, model, photos, point, busy) { localMessage = it }
-                    PointTab.COMMENT -> CommentTabContent(comment, busy, photos, point) { comment = it }
-                }
-                (localMessage ?: attachmentState.message)?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp))
+                    PointTab.PHOTO -> PhotoTabContent(context, scope, model, photos, point, busy,
+                        onDraftChange = { id, text -> drafts[id] = text }) { localMessage = it }
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+            }
+
+            // Outside the scrolling area: a confirmation the user never has to scroll to find.
+            (localMessage ?: attachmentState.message)?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp))
+            }
+
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp)
+                    .clickable(enabled = !busy) { saveAndLeave() }
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                    .padding(vertical = 14.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Сохранить", color = MaterialTheme.colorScheme.onPrimary)
             }
 
             Row(
@@ -186,7 +208,7 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
         try {
             reader = openDrawingDocument(path)
             val size = reader.pageSize(point.pageNumber)
-            val bitmap = reader.renderPage(point.pageNumber, 1800)
+            val bitmap = reader.renderPage(point.pageNumber, 2400)
             preview = bitmap to size
         } catch (_: Exception) {
             preview = null
@@ -217,7 +239,7 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
             .pointerInput(pageRect, boxSize) {
                 detectTransformGestures { centroid, drag, zoom, _ ->
                     val rect = pageRect ?: return@detectTransformGestures
-                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                    val nextScale = (scale * zoom).coerceIn(MIN_SCALE, MAX_SCALE)
                     val center = Offset(boxSize.width / 2f, boxSize.height / 2f)
                     val offset = centroid - center
                     val nextPan = offset - (offset - pan) / scale * nextScale + drag
@@ -239,8 +261,8 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
             val currentPx = dragOffsetPx ?: pageTransform.pageToScreen(Offset(point.x, point.y))
             Box(
                 Modifier
-                    .offset(x = with(density) { currentPx.x.toDp() } - 14.dp, y = with(density) { currentPx.y.toDp() } - 14.dp)
-                    .size(28.dp)
+                    .offset(x = with(density) { currentPx.x.toDp() } - MARKER_SIZE / 2, y = with(density) { currentPx.y.toDp() } - MARKER_SIZE / 2)
+                    .size(MARKER_SIZE)
                     .background(pointColors[colorIndex.coerceIn(0, pointColors.lastIndex)], CircleShape)
                     .pointerInput(point.id, rect) {
                         detectDragGestures(
@@ -266,13 +288,13 @@ private fun MiniDraggableMap(db: AppDatabase, point: Point, displayIndex: Int, d
         }
         Column(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             IconButton(onClick = {
-                scale = (scale + 0.5f).coerceAtMost(5f)
+                scale = (scale * 1.5f).coerceAtMost(MAX_SCALE)
                 pageRect?.let { pan = clampPagePan(pan, scale, it, Offset(boxSize.width.toFloat(), boxSize.height.toFloat())) }
             }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
                 Icon(Icons.Default.ZoomIn, contentDescription = "Приблизить чертёж")
             }
             IconButton(onClick = {
-                scale = (scale - 0.5f).coerceAtLeast(1f)
+                scale = (scale / 1.5f).coerceAtLeast(MIN_SCALE)
                 pageRect?.let { pan = clampPagePan(pan, scale, it, Offset(boxSize.width.toFloat(), boxSize.height.toFloat())) }
             }, modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))) {
                 Icon(Icons.Default.ZoomOut, contentDescription = "Отдалить чертёж")
@@ -289,6 +311,7 @@ private fun PhotoTabContent(
     photos: List<Photo>,
     point: Point,
     busy: Boolean,
+    onDraftChange: (Long, String) -> Unit,
     onMessage: (String?) -> Unit
 ) {
     var pendingCameraPath by rememberSaveable(point.id) { mutableStateOf<String?>(null) }
@@ -458,10 +481,7 @@ private fun PhotoTabContent(
                             OutlinedButton(enabled = !busy && pendingCameraPath == null,
                                 onClick = { launchGallery(photo.id) }, modifier = Modifier.weight(1f)) { Text("Заменить из галереи") }
                         }
-                        PhotoDescriptionEditor(photo.id, photo.description, point.comment, busy) { description ->
-                            onMessage(null)
-                            model.saveDescription(photo.id, description)
-                        }
+                        PhotoDescriptionEditor(photo.id, photo.description, busy) { onDraftChange(photo.id, it) }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -488,20 +508,3 @@ private fun PhotoTabContent(
     }
 }
 
-@Composable
-private fun CommentTabContent(comment: String, busy: Boolean, photos: List<Photo>, point: Point, onChange: (String) -> Unit) {
-    SectionCard {
-        Column(Modifier.padding(16.dp)) {
-            Text("Комментарий", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = comment, onValueChange = onChange, enabled = !busy, minLines = 4, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
-            Text("Новые фото получают этот комментарий как описание по умолчанию.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (photos.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Text("Фотографий у точки: ${photos.size}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}

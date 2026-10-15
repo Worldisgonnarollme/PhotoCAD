@@ -81,4 +81,31 @@ class PhotoAlbumGeneratorTest {
             } finally { output.file.delete() }
         } finally { document.close(); drawing.delete(); photo.delete(); secondPhoto.delete() }
     }
+
+    @Test fun photoWithoutDescriptionStillProducesItsPage() = runBlocking {
+        val drawing = File.createTempFile("blank-drawing", ".pdf", context.cacheDir)
+        val photo = File.createTempFile("blank-photo", ".png", context.cacheDir)
+        val document = PdfDocument()
+        try {
+            val page = document.startPage(PdfDocument.PageInfo.Builder(600, 400, 1).create())
+            page.canvas.drawColor(Color.WHITE)
+            document.finishPage(page)
+            drawing.outputStream().use(document::writeTo)
+            val image = Bitmap.createBitmap(300, 400, Bitmap.Config.ARGB_8888)
+            try { image.eraseColor(Color.GREEN); photo.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+            finally { image.recycle() }
+
+            val input = PhotoAlbumInput(
+                cover = AlbumCover(objectName = "Объект"),
+                photos = listOf(PdfPhoto(photo.path, "", drawingPath = drawing.path))
+            )
+            val output = PhotoAlbumGenerator(context).generate(input, context.cacheDir)
+            try {
+                assertEquals(3, output.pageCount)
+                PdfRenderer(ParcelFileDescriptor.open(output.file, ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer ->
+                    assertEquals(3, renderer.pageCount)
+                }
+            } finally { output.file.delete() }
+        } finally { document.close(); drawing.delete(); photo.delete() }
+    }
 }

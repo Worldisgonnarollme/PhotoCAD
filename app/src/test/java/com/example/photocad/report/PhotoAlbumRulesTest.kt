@@ -17,8 +17,4 @@ class PhotoAlbumRulesTest {
         assertEquals(setOf(7L, 8L), eligibleArchivePointIds(attached, setOf(1L, 2L, 3L, 4L)))
     }
 
-    @Test fun blankIndividualDescriptionFallsBackToPointComment() {
-        assertEquals("Комментарий", ReportRules.description("  ", "Комментарий"))
-        assertEquals("Личное", ReportRules.description("Личное", "Комментарий"))
-    }
 }

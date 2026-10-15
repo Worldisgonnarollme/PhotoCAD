@@ -64,7 +64,6 @@ class DrawingEditingTest {
                 firstId = db.pointDao().insert(Point(drawingId = drawingId, x = 0.3f, y = 0.4f, comment = "Исходный"))
                 secondId = db.pointDao().insert(Point(drawingId = drawingId, x = 0.6f, y = 0.7f))
                 db.pointDao().updateColor(firstId, 1)
-                db.pointDao().updateComment(firstId, "Новый комментарий")
                 db.photoDao().insert(Photo(pointId = firstId, filePath = "photo", description = "Личное описание"))
                 db.pointDao().setArchived(firstId, true)
             } finally { firstDb.close() }
@@ -75,7 +74,7 @@ class DrawingEditingTest {
                 val second = db.pointDao().getById(secondId)!!
                 assertEquals(1, first.colorIndex)
                 assertTrue(first.isArchived)
-                assertEquals("Новый комментарий", first.comment)
+                assertEquals("Исходный", first.comment)
                 assertEquals("Личное описание", db.photoDao().getByPoint(firstId).first().single().description)
                 assertEquals(0, second.colorIndex)
                 assertFalse(second.isArchived)

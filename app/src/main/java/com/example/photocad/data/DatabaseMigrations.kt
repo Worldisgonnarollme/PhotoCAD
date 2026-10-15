@@ -60,4 +60,10 @@ object DatabaseMigrations {
             )""".trimIndent())
         }
     }
+
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE points ADD COLUMN isFixed INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }
