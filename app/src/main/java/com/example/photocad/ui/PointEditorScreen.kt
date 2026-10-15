@@ -82,22 +82,13 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
     val drafts = remember(point.id) { mutableStateMapOf<Long, String>() }
 
     // Colour and photos are written the moment they change; only the typed descriptions wait here.
-    suspend fun persistDrafts(): Int {
-        val pending = photos.filter { photo -> drafts[photo.id]?.takeIf { it != photo.description.orEmpty() } != null }
-        pending.forEach { photo -> db.photoDao().updateDescription(photo.id, drafts.getValue(photo.id)) }
-        return pending.size
+    // Both the button and the arrow do the same thing: store the typed text, then go back to
+    // the drawing. Colour and photos were already written when they changed.
+    fun saveAndLeave() = scope.launch {
+        photos.filter { photo -> drafts[photo.id]?.takeIf { it != photo.description.orEmpty() } != null }
+            .forEach { photo -> db.photoDao().updateDescription(photo.id, drafts.getValue(photo.id)) }
+        onBack()
     }
-
-    fun saveEverything() {
-        scope.launch {
-            val updated = persistDrafts()
-            localMessage = if (updated == 0) "Все данные точки сохранены"
-            else "Данные сохранены. Описаний обновлено: $updated."
-        }
-    }
-
-    // Leaving must not lose text either, so the arrow saves before it navigates.
-    fun saveAndLeave() = scope.launch { persistDrafts(); onBack() }
 
     Scaffold(
         topBar = {
@@ -133,7 +124,7 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayIndex: Int, startOnP
 
             Row(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp)
-                    .clickable(enabled = !busy) { saveEverything() }
+                    .clickable(enabled = !busy) { saveAndLeave() }
                     .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
                     .padding(vertical = 14.dp),
                 horizontalArrangement = Arrangement.Center,

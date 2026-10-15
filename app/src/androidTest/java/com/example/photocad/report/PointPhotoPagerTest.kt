@@ -39,7 +39,8 @@ class PointPhotoPagerTest {
                 db.photoDao().insert(Photo(pointId = pointId, filePath = file.path, description = null))
                 db.pointDao().getById(pointId)!!
             }
-            compose.setContent { PhotoCADTheme(AppThemeMode.LIGHT) { PointEditorScreen(db, point, 1, true) {} } }
+            var left = false
+            compose.setContent { PhotoCADTheme(AppThemeMode.LIGHT) { PointEditorScreen(db, point, 1, true) { left = true } } }
             compose.waitUntil(10000) { compose.onAllNodesWithText("Описание фотографии").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Описание фотографии").performTextReplacement("Набрано без подтверждения")
             // The field has no save button of its own; the screen's button is the only way to store it.
@@ -48,7 +49,8 @@ class PointPhotoPagerTest {
             compose.waitUntil(10000) {
                 runBlocking { db.photoDao().getByPoint(point.id).first().single().description } == "Набрано без подтверждения"
             }
-            compose.onNodeWithText("Данные сохранены. Описаний обновлено: 1.").assertExists()
+            // Saving returns to the drawing.
+            compose.waitUntil(10000) { left }
         } finally { db.close(); file.delete() }
     }
 
