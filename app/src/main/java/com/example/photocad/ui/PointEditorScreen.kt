@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -43,6 +44,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -57,25 +59,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Locale
 import java.util.UUID
 
 private enum class PointTab(val label: String) { POINT("Точка"), PHOTO("Фото") }
-
-private fun parseManualCaptureTime(dateText: String, timeText: String): Pair<String, Int?>? {
-    val date = dateText.trim()
-    val time = timeText.trim()
-    if (!Regex("\\d{4}-\\d{2}-\\d{2}").matches(date) || !Regex("\\d{2}:\\d{2}").matches(time)) return null
-    val input = "$date $time"
-    val parser = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).apply {
-        isLenient = false
-        timeZone = java.util.TimeZone.getTimeZone("UTC")
-    }
-    val instant = runCatching { parser.parse(input) }.getOrNull() ?: return null
-    if (parser.format(instant) != input) return null
-    return "${date}T${time}:00" to null
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -353,7 +339,7 @@ private fun PhotoTabContent(
     var showAddChoices by remember(point.id) { mutableStateOf(false) }
 
     photoToEditTime?.let { photo ->
-        var dateInput by remember(photo.id) { mutableStateOf(photo.capturedAtLocal?.take(10).orEmpty()) }
+        var dateInput by remember(photo.id) { mutableStateOf(isoDateToInput(photo.capturedAtLocal)) }
         var timeInput by remember(photo.id) {
             mutableStateOf(photo.capturedAtLocal?.takeIf { it.length >= 16 }?.substring(11, 16).orEmpty())
         }
@@ -363,10 +349,14 @@ private fun PhotoTabContent(
             title = { Text("Дата и время съёмки") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(dateInput, { dateInput = it; dateError = false },
-                        label = { Text("Дата (ГГГГ-ММ-ДД)") }, singleLine = true)
-                    OutlinedTextField(timeInput, { timeInput = it; dateError = false },
-                        label = { Text("Время (ЧЧ:ММ)") }, singleLine = true)
+                    OutlinedTextField(dateInput,
+                        { dateInput = formatDateInput(it, deleting = it.length < dateInput.length); dateError = false },
+                        label = { Text("Дата (ДД.ММ.ГГГГ)") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(timeInput,
+                        { timeInput = formatTimeInput(it, deleting = it.length < timeInput.length); dateError = false },
+                        label = { Text("Время (ЧЧ:ММ)") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     if (dateError) Text("Проверьте дату и время", color = MaterialTheme.colorScheme.error)
                 }
             },
@@ -379,7 +369,7 @@ private fun PhotoTabContent(
                         photoToEditTime = null
                         scope.launch {
                             try {
-                                db.photoDao().updateCaptureTime(photo.id, capture.first, capture.second)
+                                db.photoDao().updateCaptureTime(photo.id, capture, null)
                                 onMessage(null)
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
