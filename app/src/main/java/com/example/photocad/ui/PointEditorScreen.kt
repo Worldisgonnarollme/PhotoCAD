@@ -44,7 +44,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -60,6 +62,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+
+/** Masked fields always type forward: the caret follows the reformatted text to its end. */
+private fun caretAtEnd(text: String) = TextFieldValue(text, TextRange(text.length))
 
 private enum class PointTab(val label: String) { POINT("Точка"), PHOTO("Фото") }
 
@@ -339,9 +344,11 @@ private fun PhotoTabContent(
     var showAddChoices by remember(point.id) { mutableStateOf(false) }
 
     photoToEditTime?.let { photo ->
-        var dateInput by remember(photo.id) { mutableStateOf(isoDateToInput(photo.capturedAtLocal)) }
+        // TextFieldValue, not a plain String: inserting a separator has to move the caret with it,
+        // otherwise the next digit lands in front of the separator and the date reads backwards.
+        var dateInput by remember(photo.id) { mutableStateOf(caretAtEnd(isoDateToInput(photo.capturedAtLocal))) }
         var timeInput by remember(photo.id) {
-            mutableStateOf(photo.capturedAtLocal?.takeIf { it.length >= 16 }?.substring(11, 16).orEmpty())
+            mutableStateOf(caretAtEnd(photo.capturedAtLocal?.takeIf { it.length >= 16 }?.substring(11, 16).orEmpty()))
         }
         var dateError by remember(photo.id) { mutableStateOf(false) }
         AlertDialog(
@@ -350,11 +357,17 @@ private fun PhotoTabContent(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(dateInput,
-                        { dateInput = formatDateInput(it, deleting = it.length < dateInput.length); dateError = false },
+                        {
+                            dateInput = caretAtEnd(formatDateInput(it.text, deleting = it.text.length < dateInput.text.length))
+                            dateError = false
+                        },
                         label = { Text("Дата (ДД.ММ.ГГГГ)") }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     OutlinedTextField(timeInput,
-                        { timeInput = formatTimeInput(it, deleting = it.length < timeInput.length); dateError = false },
+                        {
+                            timeInput = caretAtEnd(formatTimeInput(it.text, deleting = it.text.length < timeInput.text.length))
+                            dateError = false
+                        },
                         label = { Text("Время (ЧЧ:ММ)") }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     if (dateError) Text("Проверьте дату и время", color = MaterialTheme.colorScheme.error)
@@ -362,7 +375,7 @@ private fun PhotoTabContent(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val capture = parseManualCaptureTime(dateInput, timeInput)
+                    val capture = parseManualCaptureTime(dateInput.text, timeInput.text)
                     if (capture == null) {
                         dateError = true
                     } else {
