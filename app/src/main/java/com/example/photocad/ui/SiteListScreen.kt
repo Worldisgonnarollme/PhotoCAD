@@ -10,10 +10,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -126,33 +126,34 @@ fun SiteListScreen(db: AppDatabase, onOpenSite: (Long) -> Unit, onSiteReport: (L
         else -> Column(Modifier.statusBarsPadding().fillMaxSize()) {
             Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(32.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(16.dp))
-                        }
-                        Text("PhotoCAD", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
+                    Box(
+                        Modifier.size(32.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(16.dp))
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Button(
-                            onClick = { openArchive.launch(arrayOf("*/*")) },
-                            shape = RoundedCornerShape(50),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) { Text("Загрузить архив объекта", style = MaterialTheme.typography.labelLarge) }
-                        IconButton(
-                            onClick = { creating = true },
-                            modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Добавить объект", tint = MaterialTheme.colorScheme.onPrimary)
-                        }
+                    Text("PhotoCAD", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
+                }
+                // Creating is the primary action; loading an archive is the quieter one below it.
+                Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)) {
+                    Button(
+                        onClick = { creating = true },
+                        shape = RoundedCornerShape(16.dp),
+                        contentPadding = PaddingValues(vertical = 14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Text("Создать новый объект", style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(start = 8.dp))
+                    }
+                    TextButton(onClick = { openArchive.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("Загрузить архив объекта", style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
