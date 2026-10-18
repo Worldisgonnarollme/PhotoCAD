@@ -19,7 +19,7 @@ import java.io.File
 class ReportArchiveWorkflowTest {
     private val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
 
-    @Test fun partialPointStaysActiveAndCompletePointArchivesOnlyAfterSave() = runBlocking {
+    @Test fun saveWithoutDeleteKeepsPointsActive() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(app, AppDatabase::class.java).build()
         val drawingFile = drawing()
         val photoFile = photo()
@@ -34,28 +34,24 @@ class ReportArchiveWorkflowTest {
             val model = ReportViewModel(app, db, drawingId)
             model.open()
             withTimeout(10000) { model.state.first { it.initialized } }
-            model.next(); model.next()
             model.select(partialPhotos.last(), false)
             model.next()
             model.generate()
             withTimeout(30000) { model.state.first { it.generated != null && !it.busy } }
             assertFalse(model.state.value.saved)
-            model.archiveUsedPoints()
             assertFalse(db.pointDao().getById(complete)!!.isArchived)
 
             model.savePdf(Uri.fromFile(destination))
             withTimeout(30000) { model.state.first { it.saved && !it.busy } }
             assertTrue(destination.length() > 0)
-            model.archiveUsedPoints()
-            withTimeout(10000) { model.state.first { it.archiveDecisionDone && !it.busy } }
             assertFalse(db.pointDao().getById(partial)!!.isArchived)
-            assertTrue(db.pointDao().getById(complete)!!.isArchived)
+            assertFalse(db.pointDao().getById(complete)!!.isArchived)
             assertEquals(2, db.pointDao().getById(complete)!!.colorIndex)
             assertEquals(3, db.photoDao().getByPoint(partial).first().size)
         } finally { db.close(); drawingFile.delete(); photoFile.delete(); destination.delete() }
     }
 
-    @Test fun failedSaveCannotArchiveThePoint() = runBlocking {
+    @Test fun failedSaveKeepsThePoint() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(app, AppDatabase::class.java).build()
         val drawingFile = drawing()
         val photoFile = photo()
@@ -66,11 +62,10 @@ class ReportArchiveWorkflowTest {
             val model = ReportViewModel(app, db, drawingId)
             model.open()
             withTimeout(10000) { model.state.first { it.initialized } }
-            model.next(); model.next(); model.next(); model.generate()
+            model.next(); model.generate()
             withTimeout(30000) { model.state.first { it.generated != null && !it.busy } }
             model.savePdf(Uri.parse("content://missing.photocad.provider/unwritable"))
             withTimeout(10000) { model.state.first { it.message?.startsWith("Не удалось сохранить PDF") == true && !it.busy } }
-            model.archiveUsedPoints()
             assertFalse(db.pointDao().getById(point)!!.isArchived)
         } finally { db.close(); drawingFile.delete(); photoFile.delete() }
     }
@@ -90,7 +85,6 @@ class ReportArchiveWorkflowTest {
             val model = ReportViewModel(app, db, drawingId)
             model.open()
             withTimeout(10000) { model.state.first { it.initialized } }
-            model.next(); model.next()
             model.select(partialPhotos.last(), false)
             model.next()
             model.setDeletePointsAfterSave(true)
@@ -107,8 +101,6 @@ class ReportArchiveWorkflowTest {
             assertTrue(db.photoDao().getByPoint(complete).first().isEmpty())
             assertNotNull(db.pointDao().getById(partial))
             assertEquals(2, db.photoDao().getByPoint(partial).first().size)
-            // The archive prompt is pointless once the points are gone.
-            assertTrue(model.state.value.archiveDecisionDone)
         } finally { db.close(); drawingFile.delete(); photoFile.delete(); destination.delete() }
     }
 
@@ -123,7 +115,7 @@ class ReportArchiveWorkflowTest {
             val model = ReportViewModel(app, db, drawingId)
             model.open()
             withTimeout(10000) { model.state.first { it.initialized } }
-            model.next(); model.next(); model.next()
+            model.next()
             model.setDeletePointsAfterSave(true)
             model.generate()
             withTimeout(30000) { model.state.first { it.generated != null && !it.busy } }
@@ -132,6 +124,30 @@ class ReportArchiveWorkflowTest {
             assertNotNull(db.pointDao().getById(point))
             assertEquals(1, db.photoDao().getByPoint(point).first().size)
         } finally { db.close(); drawingFile.delete(); photoFile.delete() }
+    }
+
+    @Test fun assignedTimeForUndatedGroupIsPersistedAfterSuccessfulSave() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(app, AppDatabase::class.java).build()
+        val drawingFile = drawing()
+        val photoFile = photo()
+        val destination = File.createTempFile("saved-album", ".pdf", app.cacheDir)
+        try {
+            val siteId = db.siteDao().insert(Site(name = "Объект"))
+            val drawingId = db.drawingDao().insert(Drawing(name = "План", filePath = drawingFile.path, siteId = siteId))
+            val pointId = db.pointDao().insert(Point(drawingId = drawingId, x = 0.5f, y = 0.5f))
+            val photoId = db.photoDao().insert(Photo(pointId = pointId, filePath = photoFile.path, description = "Фото"))
+            val model = ReportViewModel(app, db, siteId, null)
+            model.open()
+            withTimeout(10000) { model.state.first { it.initialized } }
+            model.editSelection(ReportSelection(setOf(drawingId), includeUndated = true,
+                undatedGroupDateTime = "2026-10-16T12:30:45"))
+            model.next(); model.next(); model.generate()
+            withTimeout(30000) { model.state.first { it.generated != null && !it.busy } }
+            assertNull(db.photoDao().getById(photoId)!!.capturedAtLocal)
+            model.savePdf(Uri.fromFile(destination))
+            withTimeout(30000) { model.state.first { it.saved && !it.busy } }
+            assertEquals("2026-10-16T12:30:45", db.photoDao().getById(photoId)!!.capturedAtLocal)
+        } finally { db.close(); drawingFile.delete(); photoFile.delete(); destination.delete() }
     }
 
     private fun drawing(): File {

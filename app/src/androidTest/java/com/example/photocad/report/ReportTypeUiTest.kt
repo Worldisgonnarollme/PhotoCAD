@@ -19,7 +19,7 @@ import org.junit.Test
 class ReportTypeUiTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun reportStartsWithCoverAndHasNoTypeSelection() {
+    @Test fun drawingReportStartsWithPhotosAndCoverEditingIsOptional() {
         runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
@@ -27,12 +27,12 @@ class ReportTypeUiTest {
             val siteId = db.siteDao().insert(Site(name = "Объект"))
             val drawingId = db.drawingDao().insert(Drawing(name = "План", filePath = "not-read-yet", siteId = siteId))
             compose.setContent { PhotoCADTheme(AppThemeMode.DARK) { ReportScreen(db, drawingId, onBack = {}) } }
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Титульный лист").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Состав фотоотчёта").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Выберите тип документа").assertDoesNotExist()
-            compose.onNodeWithText("Продолжить").performClick()
-            compose.onNodeWithText("Состав фотоотчёта").assertExists()
-            compose.onNodeWithText("К предыдущему шагу").performClick()
+            compose.onNodeWithText("Изменить титульный лист").performClick()
             compose.onNodeWithText("Титульный лист").assertExists()
+            compose.onNodeWithText("К предыдущему шагу").performClick()
+            compose.onNodeWithText("Состав фотоотчёта").assertExists()
         } finally { db.close() }
         }
     }

@@ -26,8 +26,11 @@ class PhotoAlbumGenerator(private val context: Context) {
         }
         if (!outputDirectory.isDirectory && !outputDirectory.mkdirs()) throw ReportException("Не удалось создать папку отчётов")
         val token = UUID.randomUUID().toString()
-        val temporary = File(outputDirectory, "Album-$token.part")
-        val target = File(outputDirectory, "Album-$token.pdf")
+        val reportDirectory = File(outputDirectory, token)
+        if (!reportDirectory.mkdir()) throw ReportException("Не удалось создать папку отчёта")
+        val temporary = File(reportDirectory, "report.part")
+        val target = File(reportDirectory, snapshot.displayName.takeIf { it.endsWith(".pdf", ignoreCase = true) &&
+            '/' !in it && '\\' !in it } ?: "Album-$token.pdf")
         val document = PdfDocument()
         val pointRenderer = PhotoPointPageRenderer()
         try {
@@ -37,13 +40,15 @@ class PhotoAlbumGenerator(private val context: Context) {
                 try { draw(page.canvas) } finally { document.finishPage(page) }
             }
             currentCoroutineContext().ensureActive()
-            page(1) { CoverPageRenderer().render(it, snapshot.cover) }
-            page(2) { GeneralInfoPageRenderer(context).render(it) }
+            var firstPhotoPage = 1
+            if (snapshot.includeCover) page(firstPhotoPage++) { CoverPageRenderer().render(it, snapshot.cover) }
+            if (snapshot.includeGeneralInfo) page(firstPhotoPage++) { GeneralInfoPageRenderer(context).render(it) }
             snapshot.photos.forEachIndexed { index, photo ->
                 currentCoroutineContext().ensureActive()
                 val page = document.startPage(PdfDocument.PageInfo.Builder(
-                    ReportLayout.PAGE_WIDTH, ReportLayout.PAGE_HEIGHT, index + 3).create())
-                try { pointRenderer.render(page.canvas, photo, index + 3, snapshot.pageCount) }
+                    ReportLayout.PAGE_WIDTH, ReportLayout.PAGE_HEIGHT, index + firstPhotoPage).create())
+                try { pointRenderer.render(page.canvas, photo, index + firstPhotoPage, snapshot.pageCount,
+                    snapshot.generatedAtLocal, index + 1) }
                 finally { document.finishPage(page) }
                 onProgress(index + 1, snapshot.photos.size)
             }
@@ -65,6 +70,7 @@ class PhotoAlbumGenerator(private val context: Context) {
             pointRenderer.close()
             document.close()
             temporary.delete()
+            if (!target.exists()) reportDirectory.delete()
         }
     }
 }

@@ -32,7 +32,8 @@ class DatabaseMigrationTest {
                 old.version = 6
             }
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(DatabaseMigrations.MIGRATION_6_7, DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9).build()
+                .addMigrations(DatabaseMigrations.MIGRATION_6_7, DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9,
+                    DatabaseMigrations.MIGRATION_9_10).build()
             try {
                 val point = db.pointDao().getById(3)!!
                 assertEquals(1, point.colorIndex)
@@ -69,7 +70,8 @@ class DatabaseMigrationTest {
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3, DatabaseMigrations.MIGRATION_3_4,
                     DatabaseMigrations.MIGRATION_4_5, DatabaseMigrations.MIGRATION_5_6,
-                    DatabaseMigrations.MIGRATION_6_7, DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9).build()
+                    DatabaseMigrations.MIGRATION_6_7, DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9,
+                    DatabaseMigrations.MIGRATION_9_10).build()
             try {
                 val point = db.pointDao().getById(10)!! // opening invokes migration + generated Room schema validation
                 assertEquals("", point.comment)
@@ -99,7 +101,8 @@ class DatabaseMigrationTest {
             val reopened = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3, DatabaseMigrations.MIGRATION_3_4,
                     DatabaseMigrations.MIGRATION_4_5, DatabaseMigrations.MIGRATION_5_6,
-                    DatabaseMigrations.MIGRATION_6_7, DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9).build()
+                    DatabaseMigrations.MIGRATION_6_7, DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9,
+                    DatabaseMigrations.MIGRATION_9_10).build()
             try { assertEquals("Явно сохранено", reopened.photoDao().getByPoint(10).first().first { it.id == 100L }.description) }
             finally { reopened.close() }
         } finally { context.deleteDatabase(name); photoFile.delete() }
@@ -124,7 +127,8 @@ class DatabaseMigrationTest {
             }
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(DatabaseMigrations.MIGRATION_5_6, DatabaseMigrations.MIGRATION_6_7,
-                    DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9).build()
+                    DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9,
+                    DatabaseMigrations.MIGRATION_9_10).build()
             try {
                 val point = db.pointDao().getById(3)!!
                 assertEquals(2L, point.drawingId)
@@ -157,7 +161,8 @@ class DatabaseMigrationTest {
                 old.version = 7
             }
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9).build()
+                .addMigrations(DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9,
+                    DatabaseMigrations.MIGRATION_9_10).build()
             try {
                 assertEquals("Старый объект", db.siteDao().getById(1)!!.name)
                 assertNull(db.siteDao().getReportDetails(1))
@@ -191,17 +196,25 @@ class DatabaseMigrationTest {
                 old.execSQL("CREATE INDEX index_photos_pointId ON photos(pointId)")
                 old.execSQL("INSERT INTO sites VALUES(1, 'Объект', '', '')")
                 old.execSQL("INSERT INTO drawings VALUES(2, 'План', '/drawing.pdf', 1, '')")
+                old.execSQL("INSERT INTO points VALUES(1, 2, 0.1, 0.2, 1, 'Архивная', 0, 1)")
                 old.execSQL("INSERT INTO points VALUES(3, 2, 0.3, 0.7, 1, 'Комментарий', 1, 0)")
+                old.execSQL("INSERT INTO points VALUES(4, 2, 0.4, 0.8, 1, 'Вторая', 2, 0)")
+                old.execSQL("INSERT INTO photos VALUES(5, 3, '/legacy.jpg', 'Старое фото')")
                 old.version = 8
             }
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(DatabaseMigrations.MIGRATION_8_9).build()
+                .addMigrations(DatabaseMigrations.MIGRATION_8_9, DatabaseMigrations.MIGRATION_9_10).build()
             try {
                 val migrated = db.pointDao().getById(3)!!
                 assertEquals(0.3f, migrated.x, 0.0001f)
                 assertEquals(0.7f, migrated.y, 0.0001f)
                 assertEquals("Комментарий", migrated.comment)
                 assertFalse(migrated.isFixed)
+                assertEquals(1, migrated.displayNumber)
+                assertEquals(2, db.pointDao().getById(4)!!.displayNumber)
+                val legacyPhoto = db.photoDao().getById(5)!!
+                assertNull(legacyPhoto.capturedAtLocal)
+                assertFalse(legacyPhoto.captureMetadataChecked)
 
                 db.pointDao().setFixed(3, true)
                 assertTrue(db.pointDao().getById(3)!!.isFixed)
@@ -225,5 +238,29 @@ class DatabaseMigrationTest {
             assertEquals(listOf(p1), db.pointDao().getByDrawingPage(one, 1).first().map { it.id })
             assertEquals(listOf(p3), db.pointDao().getByDrawingPage(one, 2).first().map { it.id })
         } finally { db.close() }
+    }
+
+    @Test fun fixedPointCanBeUnfixedAfterDatabaseReopen() = runBlocking {
+        val name = "fixed-reopen-${System.nanoTime()}.db"
+        try {
+            val first = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            val id = try { first.pointDao().insert(Point(drawingId = 1, x = 0.4f, y = 0.6f,
+                displayNumber = 3, colorIndex = 2, isFixed = true)) } finally { first.close() }
+            val second = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            try {
+                val point = second.pointDao().getById(id)!!
+                assertTrue(point.isFixed)
+                assertEquals(3, point.displayNumber)
+                assertEquals(2, point.colorIndex)
+                assertEquals(1, second.pointDao().setFixed(id, false))
+            } finally { second.close() }
+            val third = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            try {
+                val point = third.pointDao().getById(id)!!
+                assertFalse(point.isFixed)
+                assertEquals(0.4f, point.x, 0.0001f)
+                assertEquals(0.6f, point.y, 0.0001f)
+            } finally { third.close() }
+        } finally { context.deleteDatabase(name) }
     }
 }

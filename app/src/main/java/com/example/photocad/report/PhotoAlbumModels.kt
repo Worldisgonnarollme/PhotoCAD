@@ -20,8 +20,15 @@ data class AlbumCover(
     val albumNumber: String = ""
 )
 
-data class PhotoAlbumInput(val cover: AlbumCover, val photos: List<PdfPhoto>) {
-    val pageCount: Int get() = photos.size + 2
+data class PhotoAlbumInput(
+    val cover: AlbumCover,
+    val photos: List<PdfPhoto>,
+    val includeCover: Boolean = true,
+    val includeGeneralInfo: Boolean = true,
+    val generatedAtLocal: String = "",
+    val displayName: String = ""
+) {
+    val pageCount: Int get() = photos.size + (if (includeCover) 1 else 0) + (if (includeGeneralInfo) 1 else 0)
 }
 
 fun albumCoverForSite(site: Site?, drawingName: String, details: SiteReportDetails?, currentYear: String): AlbumCover =

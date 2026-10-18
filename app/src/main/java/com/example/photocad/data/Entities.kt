@@ -54,7 +54,8 @@ data class Point(
     @ColumnInfo(defaultValue = "0") val colorIndex: Int = 0,
     @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false,
     // Fixed points stay put: dragging them on the drawing does nothing.
-    @ColumnInfo(defaultValue = "0") val isFixed: Boolean = false
+    @ColumnInfo(defaultValue = "0") val isFixed: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val displayNumber: Int = 0
 )
 
 @Entity(tableName = "photos", indices = [Index("pointId")])
@@ -63,5 +64,8 @@ data class Photo(
     val pointId: Long,
     val filePath: String,
     // null: legacy/no individual description; empty string: explicitly cleared.
-    val description: String? = null
+    val description: String? = null,
+    val capturedAtLocal: String? = null,
+    val capturedOffsetMinutes: Int? = null,
+    @ColumnInfo(defaultValue = "0") val captureMetadataChecked: Boolean = false
 )

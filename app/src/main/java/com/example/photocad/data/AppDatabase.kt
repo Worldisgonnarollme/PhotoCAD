@@ -10,8 +10,7 @@ data class SiteSummary(
     val address: String,
     val description: String,
     val blueprintCount: Int,
-    val pointCount: Int,
-    val thumbnailPath: String?
+    val pointCount: Int
 )
 
 @Dao
@@ -31,8 +30,7 @@ interface SiteDao {
         """
         SELECT sites.id AS id, sites.name AS name, sites.address AS address, sites.description AS description,
                (SELECT COUNT(*) FROM drawings WHERE drawings.siteId = sites.id) AS blueprintCount,
-               (SELECT COUNT(*) FROM points INNER JOIN drawings ON points.drawingId = drawings.id WHERE drawings.siteId = sites.id AND points.isArchived = 0) AS pointCount,
-               (SELECT filePath FROM drawings WHERE drawings.siteId = sites.id ORDER BY drawings.id ASC LIMIT 1) AS thumbnailPath
+               (SELECT COUNT(*) FROM points INNER JOIN drawings ON points.drawingId = drawings.id WHERE drawings.siteId = sites.id AND points.isArchived = 0) AS pointCount
         FROM sites
         ORDER BY sites.id DESC
         """
@@ -53,6 +51,7 @@ data class DrawingSummary(
 interface DrawingDao {
     @Insert suspend fun insert(drawing: Drawing): Long
     @Query("SELECT * FROM drawings WHERE siteId = :siteId") fun getBySite(siteId: Long): Flow<List<Drawing>>
+    @Query("SELECT * FROM drawings WHERE siteId = :siteId ORDER BY id ASC") suspend fun getAllBySite(siteId: Long): List<Drawing>
     @Query("SELECT * FROM drawings WHERE id = :id") suspend fun getById(id: Long): Drawing?
     @Query("UPDATE drawings SET name = :name, description = :description WHERE id = :id")
     suspend fun update(id: Long, name: String, description: String): Int
@@ -72,6 +71,9 @@ interface DrawingDao {
 interface PointDao {
     @Insert suspend fun insert(point: Point): Long
     @Query("SELECT * FROM points WHERE drawingId = :drawingId ORDER BY id ASC") fun getByDrawing(drawingId: Long): Flow<List<Point>>
+    @Query("SELECT * FROM points WHERE drawingId = :drawingId ORDER BY id ASC") suspend fun getAllByDrawing(drawingId: Long): List<Point>
+    @Query("SELECT COALESCE(MAX(displayNumber), 0) + 1 FROM points WHERE drawingId = :drawingId AND pageNumber = :pageNumber")
+    suspend fun nextDisplayNumber(drawingId: Long, pageNumber: Int): Int
     @Query("SELECT * FROM points WHERE drawingId = :drawingId AND isArchived = 0 ORDER BY id ASC")
     suspend fun getActiveByDrawing(drawingId: Long): List<Point>
     @Query("SELECT * FROM points WHERE drawingId = :drawingId AND pageNumber = :pageNumber AND isArchived = 0 ORDER BY id ASC")
@@ -106,6 +108,12 @@ interface PhotoDao {
     @Insert suspend fun insert(photo: Photo): Long
     @Query("SELECT * FROM photos WHERE id = :id") suspend fun getById(id: Long): Photo?
     @Query("SELECT * FROM photos WHERE pointId = :pointId ORDER BY id ASC") fun getByPoint(pointId: Long): Flow<List<Photo>>
+    @Query("SELECT * FROM photos WHERE pointId = :pointId ORDER BY id ASC") suspend fun getAllByPoint(pointId: Long): List<Photo>
+    @Query("SELECT * FROM photos WHERE captureMetadataChecked = 0") suspend fun getUncheckedCaptureMetadata(): List<Photo>
+    @Query("UPDATE photos SET capturedAtLocal = :local, capturedOffsetMinutes = :offsetMinutes, captureMetadataChecked = 1 WHERE id = :id AND captureMetadataChecked = 0")
+    suspend fun backfillCaptureMetadata(id: Long, local: String?, offsetMinutes: Int?): Int
+    @Query("UPDATE photos SET capturedAtLocal = :local, capturedOffsetMinutes = :offsetMinutes, captureMetadataChecked = 1 WHERE id = :id")
+    suspend fun updateCaptureTime(id: Long, local: String?, offsetMinutes: Int?): Int
     @Query("DELETE FROM photos WHERE id = :id") suspend fun deleteById(id: Long): Int
     @Query("UPDATE photos SET filePath = :path WHERE id = :id AND pointId = :pointId")
     suspend fun updateFilePath(id: Long, pointId: Long, path: String): Int
@@ -124,7 +132,7 @@ interface PhotoDao {
     suspend fun getReportRows(drawingId: Long): List<ReportPhotoRow>
 }
 
-@Database(entities = [Site::class, SiteReportDetails::class, Drawing::class, Point::class, Photo::class], version = 9, exportSchema = true)
+@Database(entities = [Site::class, SiteReportDetails::class, Drawing::class, Point::class, Photo::class], version = 10, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun siteDao(): SiteDao
     abstract fun drawingDao(): DrawingDao
@@ -140,7 +148,8 @@ abstract class AppDatabase : RoomDatabase() {
                         DatabaseMigrations.MIGRATION_1_2, DatabaseMigrations.MIGRATION_2_3,
                         DatabaseMigrations.MIGRATION_3_4, DatabaseMigrations.MIGRATION_4_5,
                         DatabaseMigrations.MIGRATION_5_6, DatabaseMigrations.MIGRATION_6_7,
-                        DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9
+                        DatabaseMigrations.MIGRATION_7_8, DatabaseMigrations.MIGRATION_8_9,
+                        DatabaseMigrations.MIGRATION_9_10
                     )
                     .build().also { INSTANCE = it }
             }
