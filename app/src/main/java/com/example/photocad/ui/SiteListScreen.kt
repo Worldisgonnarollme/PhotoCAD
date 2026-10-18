@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -142,9 +141,12 @@ fun SiteListScreen(db: AppDatabase, onOpenSite: (Long) -> Unit, onSiteReport: (L
                         Text("PhotoCAD", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { openArchive.launch(arrayOf("*/*")) }) {
-                            Icon(Icons.Default.FileOpen, contentDescription = "Импорт объекта")
-                        }
+                        Button(
+                            onClick = { openArchive.launch(arrayOf("*/*")) },
+                            shape = RoundedCornerShape(50),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) { Text("Загрузить архив объекта", style = MaterialTheme.typography.labelLarge) }
                         IconButton(
                             onClick = { creating = true },
                             modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
