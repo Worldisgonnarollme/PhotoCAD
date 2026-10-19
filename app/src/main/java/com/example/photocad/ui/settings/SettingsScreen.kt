@@ -1,4 +1,4 @@
-// экран настроек: переключатели "Фото" визуальные, остальное — статичные строки
+// экран настроек: галерея, тема и очистка кэша работают; «Формат отчёта», «Язык» и «Версия» справочные, «Лицензии» пока заглушка
 
 package com.example.photocad.ui.settings
 
@@ -14,6 +14,10 @@ import com.example.photocad.BuildConfig
 import com.example.photocad.data.AppThemeMode
 import com.example.photocad.data.PhotoPreferences
 import com.example.photocad.data.UserPreferences
+import com.example.photocad.data.cacheSizeBytes
+import com.example.photocad.data.clearCache
+import com.example.photocad.data.formatCacheSize
+import com.example.photocad.ui.ConfirmDialog
 import com.example.photocad.ui.components.SectionCard
 import com.example.photocad.ui.components.SettingsRow
 import kotlinx.coroutines.launch
@@ -26,6 +30,10 @@ fun SettingsScreen() {
     val photoPreferences by UserPreferences.photoPreferencesFlow(context)
         .collectAsState(initial = PhotoPreferences())
     var themeMenuOpen by remember { mutableStateOf(false) }
+    var cacheSize by remember { mutableStateOf<Long?>(null) }
+    var clearCacheRequested by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { cacheSize = cacheSizeBytes(context) }
 
     Column(Modifier.statusBarsPadding().fillMaxSize()) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
@@ -40,14 +48,6 @@ fun SettingsScreen() {
                     Switch(checked = photoPreferences.saveToGallery, onCheckedChange = { enabled ->
                         scope.launch {
                             UserPreferences.savePhotoPreferences(context, photoPreferences.copy(saveToGallery = enabled))
-                        }
-                    })
-                })
-                HorizontalDivider()
-                SettingsRow(label = "Сжимать фото", trailing = {
-                    Switch(checked = photoPreferences.compressPhotos, onCheckedChange = { enabled ->
-                        scope.launch {
-                            UserPreferences.savePhotoPreferences(context, photoPreferences.copy(compressPhotos = enabled))
                         }
                     })
                 })
@@ -74,9 +74,11 @@ fun SettingsScreen() {
                 }
             }
             SettingsSection(title = "Данные") {
-                SettingsRow(label = "Очистить кэш")
-                HorizontalDivider()
-                SettingsRow(label = "Экспорт данных")
+                SettingsRow(
+                    label = "Очистить кэш",
+                    value = cacheSize?.let { formatCacheSize(it) } ?: "…",
+                    onClick = { clearCacheRequested = true }
+                )
             }
             SettingsSection(title = "О приложении") {
                 SettingsRow(label = "Версия", value = BuildConfig.VERSION_NAME)
@@ -85,6 +87,20 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+    if (clearCacheRequested) {
+        ConfirmDialog(
+            text = "Очистить кэш? Сформированные отчёты и временные файлы архивов будут удалены. Объекты, точки и фотографии останутся.",
+            confirmText = "Очистить",
+            onConfirm = {
+                clearCacheRequested = false
+                scope.launch {
+                    clearCache(context)
+                    cacheSize = cacheSizeBytes(context)
+                }
+            },
+            onDismiss = { clearCacheRequested = false }
+        )
     }
 }
 

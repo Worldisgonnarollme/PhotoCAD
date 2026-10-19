@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
-import com.example.photocad.report.ReportImageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -42,8 +41,7 @@ suspend fun saveBitmapToAppStorage(context: Context, bitmap: Bitmap): String = w
     }
 }
 
-fun photoFileExtension(displayName: String?, compress: Boolean): String {
-    if (compress) return "jpg"
+fun photoFileExtension(displayName: String?): String {
     val extension = displayName?.substringAfterLast('.', "")?.lowercase()
     return when (extension) {
         "png", "jpg", "jpeg", "webp", "heic", "heif", "gif", "bmp" -> extension
@@ -65,53 +63,28 @@ private fun photoDirectory(context: Context): File = File(context.filesDir, "pho
     if (!isDirectory && !mkdirs()) throw IOException("Не удалось создать папку фотографий")
 }
 
-private fun writeCompressedPhoto(context: Context, sourcePath: String): String {
-    val output = File(photoDirectory(context), "${UUID.randomUUID()}.jpg")
+// Фотографии хранятся как есть: отчёту нужны исходные кадры без потерь от пережатия.
+suspend fun importPhoto(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+    val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        ?: uri.lastPathSegment
+    val output = File(photoDirectory(context), "${UUID.randomUUID()}.${photoFileExtension(displayName)}")
     try {
-        val bitmap = ReportImageLoader.load(sourcePath, maxDimension = 2048)
-        try {
-            output.outputStream().use { stream ->
-                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)) throw IOException("Не удалось сжать фотографию")
-            }
-        } finally { bitmap.recycle() }
-        if (output.length() == 0L) throw IOException("Не удалось сохранить фотографию")
-        return output.absolutePath
+        val input = context.contentResolver.openInputStream(uri) ?: throw IOException("Не удалось открыть выбранную фотографию")
+        input.use { source -> output.outputStream().use { source.copyTo(it) } }
+        if (output.length() == 0L) throw IOException("Выбрана пустая фотография")
+        output.absolutePath
     } catch (failure: Throwable) {
         output.delete()
         throw failure
     }
 }
 
-suspend fun importPhoto(context: Context, uri: Uri, preferences: PhotoPreferences): String = withContext(Dispatchers.IO) {
-    val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-        ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        ?: uri.lastPathSegment
-    if (preferences.compressPhotos) {
-        val temporary = File.createTempFile("photo-import-", ".source", context.cacheDir)
-        try {
-            val input = context.contentResolver.openInputStream(uri) ?: throw IOException("Не удалось открыть выбранную фотографию")
-            input.use { source -> temporary.outputStream().use { source.copyTo(it) } }
-            if (temporary.length() == 0L) throw IOException("Выбрана пустая фотография")
-            writeCompressedPhoto(context, temporary.path)
-        } finally { temporary.delete() }
-    } else {
-        val output = File(photoDirectory(context), "${UUID.randomUUID()}.${photoFileExtension(displayName, false)}")
-        try {
-            val input = context.contentResolver.openInputStream(uri) ?: throw IOException("Не удалось открыть выбранную фотографию")
-            input.use { source -> output.outputStream().use { source.copyTo(it) } }
-            if (output.length() == 0L) throw IOException("Выбрана пустая фотография")
-            output.absolutePath
-        } catch (failure: Throwable) {
-            output.delete()
-            throw failure
-        }
-    }
-}
-
-suspend fun storeCameraPhoto(context: Context, sourcePath: String, preferences: PhotoPreferences): String = withContext(Dispatchers.IO) {
+// Кадр с камеры уже лежит в filesDir/camera, поэтому остаётся только проверить его пригодность.
+suspend fun storeCameraPhoto(sourcePath: String): String = withContext(Dispatchers.IO) {
     val source = File(sourcePath)
     if (!source.isFile || source.length() == 0L) throw IOException("Файл фотографии с камеры недоступен")
-    if (preferences.compressPhotos) writeCompressedPhoto(context, sourcePath) else source.absolutePath
+    source.absolutePath
 }
 
 suspend fun copyPhotoToGallery(context: Context, path: String): Uri = withContext(Dispatchers.IO) {

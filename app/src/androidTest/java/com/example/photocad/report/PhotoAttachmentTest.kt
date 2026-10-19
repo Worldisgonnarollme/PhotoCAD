@@ -26,7 +26,7 @@ class PhotoAttachmentTest {
         val replacement = image()
         val cancelled = image()
         val previousPreferences = runBlocking { UserPreferences.photoPreferencesFlow(app).first() }
-        runBlocking { UserPreferences.savePhotoPreferences(app, PhotoPreferences(saveToGallery = false, compressPhotos = false)) }
+        runBlocking { UserPreferences.savePhotoPreferences(app, PhotoPreferences(saveToGallery = false)) }
         try {
             val (pointId, photoId) = runBlocking {
                 val drawingId = db.drawingDao().insert(Drawing(name = "Чертёж", filePath = "drawing", siteId = 1))
@@ -63,7 +63,7 @@ class PhotoAttachmentTest {
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
         val previousPreferences = runBlocking { UserPreferences.photoPreferencesFlow(app).first() }
-        runBlocking { UserPreferences.savePhotoPreferences(app, PhotoPreferences(saveToGallery = false, compressPhotos = false)) }
+        runBlocking { UserPreferences.savePhotoPreferences(app, PhotoPreferences(saveToGallery = false)) }
         try {
             val pointId = runBlocking {
                 val drawingId = db.drawingDao().insert(Drawing(name = "Чертёж", filePath = file.path, siteId = 1))

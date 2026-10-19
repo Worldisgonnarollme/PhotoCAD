@@ -76,7 +76,7 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
         perform(if (replacePhotoId == null) "Фотография добавлена" else "Фотография заменена") {
         val preferences = UserPreferences.photoPreferencesFlow(getApplication()).first()
         val capture = withContext(Dispatchers.IO) { readCaptureTime(getApplication(), uri) }
-        val storedPath = importPhoto(getApplication(), uri, preferences)
+        val storedPath = importPhoto(getApplication(), uri)
         try {
             attach(storedPath, preferences, allowGallery, replacePhotoId = replacePhotoId, capture = capture)
         } catch (cancelled: CancellationException) {
@@ -98,7 +98,7 @@ class PointPhotosViewModel(application: Application, private val db: AppDatabase
                 try {
                     val capture = withContext(Dispatchers.IO) { readCaptureTime(path) }
                         .takeIf { it.localDateTime != null } ?: currentCameraCaptureTime()
-                    val ready = storeCameraPhoto(getApplication(), path, preferences)
+                    val ready = storeCameraPhoto(path)
                     storedPath = ready
                     attach(ready, preferences, allowGallery, cameraSource = path, replacePhotoId = replacePhotoId, capture = capture)
                 }
