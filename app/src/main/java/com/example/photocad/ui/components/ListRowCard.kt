@@ -75,11 +75,16 @@ fun SettingsRow(
             trailing != null -> trailing()
             value != null -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant,
-                    modifier = Modifier.size(16.dp))
+                // Шеврон обещает переход, поэтому его показывают только строки с действием.
+                if (onClick != null) Chevron()
             }
-            else -> Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant,
-                modifier = Modifier.size(16.dp))
+            onClick != null -> Chevron()
         }
     }
+}
+
+@Composable
+private fun Chevron() {
+    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant,
+        modifier = Modifier.size(16.dp))
 }

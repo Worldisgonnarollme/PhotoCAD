@@ -45,13 +45,13 @@ class UserPreferencesTest {
 
     @Test fun settingsSurviveProfileClear() = runBlocking {
         UserPreferences.saveThemeMode(context, AppThemeMode.DARK)
-        UserPreferences.savePhotoPreferences(context, PhotoPreferences(saveToGallery = false, compressPhotos = false))
+        UserPreferences.savePhotoPreferences(context, PhotoPreferences(saveToGallery = false))
         UserPreferences.saveProfile(context, "Временный профиль", "/tmp/avatar.jpg")
 
         UserPreferences.clearProfile(context)
 
         assertNull(UserPreferences.profileFlow(context).first())
         assertEquals(AppThemeMode.DARK, UserPreferences.themeModeFlow(context).first())
-        assertEquals(PhotoPreferences(false, false), UserPreferences.photoPreferencesFlow(context).first())
+        assertEquals(PhotoPreferences(false), UserPreferences.photoPreferencesFlow(context).first())
     }
 }

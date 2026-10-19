@@ -14,7 +14,7 @@ val Context.userDataStore by preferencesDataStore(name = "user_profile")
 
 data class UserProfile(val fullName: String, val avatarPath: String?)
 enum class AppThemeMode { SYSTEM, LIGHT, DARK }
-data class PhotoPreferences(val saveToGallery: Boolean = true, val compressPhotos: Boolean = true)
+data class PhotoPreferences(val saveToGallery: Boolean = true)
 
 /** Local-only user profile: no login/password, no sync — just what's saved on this device. */
 object UserPreferences {
@@ -22,7 +22,6 @@ object UserPreferences {
     private val AVATAR_PATH = stringPreferencesKey("avatar_path")
     private val THEME_MODE = stringPreferencesKey("theme_mode")
     private val SAVE_TO_GALLERY = booleanPreferencesKey("save_photos_to_gallery")
-    private val COMPRESS_PHOTOS = booleanPreferencesKey("compress_photos")
 
     // null means registration hasn't happened yet on this device.
     fun profileFlow(context: Context): Flow<UserProfile?> =
@@ -42,10 +41,7 @@ object UserPreferences {
     fun photoPreferencesFlow(context: Context): Flow<PhotoPreferences> = photoPreferencesFlowFrom(context.userDataStore)
 
     fun photoPreferencesFlowFrom(store: DataStore<Preferences>): Flow<PhotoPreferences> = store.data.map { prefs ->
-        PhotoPreferences(
-            saveToGallery = prefs[SAVE_TO_GALLERY] ?: true,
-            compressPhotos = prefs[COMPRESS_PHOTOS] ?: true
-        )
+        PhotoPreferences(saveToGallery = prefs[SAVE_TO_GALLERY] ?: true)
     }
 
     suspend fun saveThemeMode(context: Context, mode: AppThemeMode) = saveThemeModeTo(context.userDataStore, mode)
@@ -58,10 +54,7 @@ object UserPreferences {
         savePhotoPreferencesTo(context.userDataStore, preferences)
 
     suspend fun savePhotoPreferencesTo(store: DataStore<Preferences>, preferences: PhotoPreferences) {
-        store.edit {
-            it[SAVE_TO_GALLERY] = preferences.saveToGallery
-            it[COMPRESS_PHOTOS] = preferences.compressPhotos
-        }
+        store.edit { it[SAVE_TO_GALLERY] = preferences.saveToGallery }
     }
 
     suspend fun saveProfile(context: Context, fullName: String, avatarPath: String?) {

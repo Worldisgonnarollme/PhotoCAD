@@ -4,11 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PhotoStorageRulesTest {
-    @Test fun compressionChoosesJpegButOriginalModeKeepsSupportedExtension() {
-        assertEquals("jpg", photoFileExtension("blueprint.PNG", compress = true))
-        assertEquals("png", photoFileExtension("photo.PNG", compress = false))
-        assertEquals("jpeg", photoFileExtension("photo.JPEG", compress = false))
-        assertEquals("jpg", photoFileExtension("camera", compress = false))
+    @Test fun storedPhotoKeepsSupportedExtension() {
+        assertEquals("png", photoFileExtension("photo.PNG"))
+        assertEquals("jpeg", photoFileExtension("photo.JPEG"))
+        assertEquals("jpg", photoFileExtension("camera"))
+        // Неизвестное расширение сводится к jpg, иначе MediaStore не подберёт mime-тип.
+        assertEquals("jpg", photoFileExtension("scan.tiff"))
     }
 
     @Test fun mediaStoreMimeTypeMatchesStoredExtension() {

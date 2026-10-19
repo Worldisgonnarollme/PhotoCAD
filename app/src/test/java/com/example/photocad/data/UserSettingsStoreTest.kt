@@ -18,22 +18,22 @@ class UserSettingsStoreTest {
 
     @Test fun themeAndPhotoSettingsRoundTrip() = runBlocking {
         UserPreferences.saveThemeModeTo(store, AppThemeMode.DARK)
-        UserPreferences.savePhotoPreferencesTo(store, PhotoPreferences(saveToGallery = false, compressPhotos = false))
+        UserPreferences.savePhotoPreferencesTo(store, PhotoPreferences(saveToGallery = false))
 
         assertEquals(AppThemeMode.DARK, UserPreferences.themeModeFlowFrom(store).first())
-        assertEquals(PhotoPreferences(false, false), UserPreferences.photoPreferencesFlowFrom(store).first())
+        assertEquals(PhotoPreferences(false), UserPreferences.photoPreferencesFlowFrom(store).first())
     }
 
     @Test fun clearProfilePreservesSettings() = runBlocking {
         UserPreferences.saveProfileTo(store, "Иванов Иван", "/tmp/avatar.jpg")
         UserPreferences.saveThemeModeTo(store, AppThemeMode.LIGHT)
-        UserPreferences.savePhotoPreferencesTo(store, PhotoPreferences(saveToGallery = false, compressPhotos = true))
+        UserPreferences.savePhotoPreferencesTo(store, PhotoPreferences(saveToGallery = false))
 
         UserPreferences.clearProfileFrom(store)
 
         assertNull(UserPreferences.profileFlowFrom(store).first())
         assertEquals(AppThemeMode.LIGHT, UserPreferences.themeModeFlowFrom(store).first())
-        assertEquals(PhotoPreferences(false, true), UserPreferences.photoPreferencesFlowFrom(store).first())
+        assertEquals(PhotoPreferences(false), UserPreferences.photoPreferencesFlowFrom(store).first())
     }
 }
 
