@@ -7,6 +7,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -54,6 +55,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.room.withTransaction
 import com.example.photocad.data.*
 import com.example.photocad.ui.components.SectionCard
 import kotlinx.coroutines.CancellationException
@@ -78,31 +80,52 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayNumber: Int, startOn
     var drawing by remember(point.drawingId) { mutableStateOf<Drawing?>(null) }
     LaunchedEffect(point.drawingId) { drawing = db.drawingDao().getById(point.drawingId) }
 
-    val photos by db.photoDao().getByPoint(point.id).collectAsState(initial = emptyList())
+    val photoRows by remember(db, point.id) { db.photoDao().getByPoint(point.id) }
+        .collectAsState(initial = null)
+    val photos = photoRows.orEmpty()
     val model: PointPhotosViewModel = viewModel(key = "point-photos-${point.id}",
         factory = PointPhotosViewModel.Factory(context.applicationContext as Application, db, point.id))
     val attachmentState by model.state.collectAsState()
     var localMessage by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf(false) }
-    val busy = attachmentState.busy
-    // Text typed into a description field but not yet confirmed with its own button.
-    val drafts = remember(point.id) { mutableStateMapOf<Long, String>() }
+    var saving by remember(point.id) { mutableStateOf(false) }
+    val busy = attachmentState.busy || saving || photoRows == null
+    // One source for both the visible fields and the values committed to Room.
+    var drafts by rememberSaveable(point.id) { mutableStateOf(mapOf<Long, String>()) }
 
     // Colour and photos are written the moment they change; only the typed descriptions wait here.
     // Both the button and the arrow do the same thing: store the typed text, then go back to
     // the drawing. Colour and photos were already written when they changed.
-    fun saveAndLeave() = scope.launch {
-        photos.filter { photo -> drafts[photo.id]?.takeIf { it != photo.description.orEmpty() } != null }
-            .forEach { photo -> db.photoDao().updateDescription(photo.id, drafts.getValue(photo.id)) }
-        onBack()
+    fun saveAndLeave() {
+        if (busy) return
+        saving = true
+        localMessage = null
+        val changed = photos.mapNotNull { photo ->
+            drafts[photo.id]?.takeIf { it != photo.description.orEmpty() }?.let { photo.id to it }
+        }
+        scope.launch {
+            try {
+                db.withTransaction {
+                    changed.forEach { (id, text) ->
+                        check(db.photoDao().updateDescription(id, text) == 1) { "Фотография недоступна" }
+                    }
+                }
+                onBack()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                localMessage = "Не удалось сохранить описания: ${failure.message ?: "повторите сохранение"}"
+            } finally { saving = false }
+        }
     }
+
+    BackHandler { saveAndLeave() }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Точка $displayNumber") },
                 navigationIcon = {
-                    IconButton(onClick = { saveAndLeave() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") }
+                    IconButton(onClick = { saveAndLeave() }, enabled = !busy) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") }
                 }
             )
         }
@@ -117,8 +140,8 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayNumber: Int, startOn
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 when (tab) {
                     PointTab.POINT -> PointTabContent(db, point, displayNumber, scope, drawing, model, busy)
-                    PointTab.PHOTO -> PhotoTabContent(context, db, scope, model, photos, point, busy,
-                        onDraftChange = { id, text -> drafts[id] = text }) { localMessage = it }
+                    PointTab.PHOTO -> PhotoTabContent(context, db, scope, model, photos, point, busy, drafts,
+                        onDraftChange = { id, text -> drafts = drafts + (id to text) }) { localMessage = it }
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
             }
@@ -141,7 +164,7 @@ fun PointEditorScreen(db: AppDatabase, point: Point, displayNumber: Int, startOn
             }
 
             Row(
-                Modifier.fillMaxWidth().padding(16.dp).clickable { confirmingDelete = true }
+                Modifier.fillMaxWidth().padding(16.dp).clickable(enabled = !busy) { confirmingDelete = true }
                     .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
                     .padding(vertical = 14.dp),
                 horizontalArrangement = Arrangement.Center,
@@ -329,6 +352,7 @@ private fun PhotoTabContent(
     photos: List<Photo>,
     point: Point,
     busy: Boolean,
+    drafts: Map<Long, String>,
     onDraftChange: (Long, String) -> Unit,
     onMessage: (String?) -> Unit
 ) {
@@ -407,7 +431,7 @@ private fun PhotoTabContent(
                         TextButton(onClick = { photoToPreview = null }) { Text("Закрыть") }
                     }
                     PhotoThumbnail(photo.filePath, Modifier.fillMaxWidth().weight(1f), maxDecodeDimension = 1800)
-                    photo.description?.takeIf { it.isNotBlank() }?.let { description ->
+                    (drafts[photo.id] ?: photo.description.orEmpty()).takeIf { it.isNotBlank() }?.let { description ->
                         Text(description, style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                     }
@@ -561,7 +585,7 @@ private fun PhotoTabContent(
                             OutlinedButton(enabled = !busy && pendingCameraPath == null,
                                 onClick = { launchGallery(photo.id) }, modifier = Modifier.weight(1f)) { Text("Заменить из галереи") }
                         }
-                        PhotoDescriptionEditor(photo.id, photo.description, busy) { onDraftChange(photo.id, it) }
+                        PhotoDescriptionEditor(drafts[photo.id] ?: photo.description.orEmpty(), busy) { onDraftChange(photo.id, it) }
                     }
                 }
                 Spacer(Modifier.height(12.dp))

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.ui.Modifier
@@ -73,8 +74,9 @@ class MainActivity : ComponentActivity() {
 private enum class MainTab(val label: String) { OBJECTS("Объекты"), PROFILE("Профиль"), SETTINGS("Настройки") }
 
 @Composable
-private fun MainApp(db: AppDatabase, profileViewModel: ProfileViewModel) {
+internal fun MainApp(db: AppDatabase, profileViewModel: ProfileViewModel) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.OBJECTS) }
+    val tabState = rememberSaveableStateHolder()
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
@@ -123,24 +125,26 @@ private fun MainApp(db: AppDatabase, profileViewModel: ProfileViewModel) {
         }
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
-            when (selectedTab) {
-                MainTab.OBJECTS -> ObjectsTab(db)
-                MainTab.PROFILE -> {
-                    val profileUi by profileViewModel.state.collectAsState()
-                    profileUi.profile?.let { profile ->
-                        ProfileScreen(
-                            db = db,
-                            profile = profile,
-                            busy = profileUi.busy,
-                            message = profileUi.message,
-                            onDismissMessage = { profileViewModel.dismissMessage() },
-                            onUpdateFullName = { profileViewModel.updateFullName(it) },
-                            onUpdateAvatarPath = { profileViewModel.updateAvatarPath(it) },
-                            onLogout = { profileViewModel.logout() }
-                        )
+            tabState.SaveableStateProvider(selectedTab.name) {
+                when (selectedTab) {
+                    MainTab.OBJECTS -> ObjectsTab(db)
+                    MainTab.PROFILE -> {
+                        val profileUi by profileViewModel.state.collectAsState()
+                        profileUi.profile?.let { profile ->
+                            ProfileScreen(
+                                db = db,
+                                profile = profile,
+                                busy = profileUi.busy,
+                                message = profileUi.message,
+                                onDismissMessage = { profileViewModel.dismissMessage() },
+                                onUpdateFullName = { profileViewModel.updateFullName(it) },
+                                onUpdateAvatarPath = { profileViewModel.updateAvatarPath(it) },
+                                onLogout = { profileViewModel.logout() }
+                            )
+                        }
                     }
+                    MainTab.SETTINGS -> SettingsScreen()
                 }
-                MainTab.SETTINGS -> SettingsScreen()
             }
         }
     }
