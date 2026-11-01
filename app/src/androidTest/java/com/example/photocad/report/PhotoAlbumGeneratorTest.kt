@@ -56,6 +56,9 @@ class PhotoAlbumGeneratorTest {
                 PdfRenderer(ParcelFileDescriptor.open(output.file, ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer ->
                     assertEquals(4, renderer.pageCount)
                     renderer.openPage(2).use { pointPage ->
+                        if (Build.VERSION.SDK_INT >= 35) {
+                            assertTrue(pointPage.textContents.joinToString(" ") { it.text }.contains("Русское описание 1"))
+                        }
                         val preview = Bitmap.createBitmap(595, 842, Bitmap.Config.ARGB_8888)
                         try {
                             pointPage.render(preview, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
@@ -64,6 +67,10 @@ class PhotoAlbumGeneratorTest {
                         } finally { preview.recycle() }
                     }
                     renderer.openPage(3).use { pointPage ->
+                        if (Build.VERSION.SDK_INT >= 35) {
+                            assertTrue(pointPage.textContents.joinToString(" ") { it.text }
+                                .contains("Длинное описание выполненных работ"))
+                        }
                         val preview = Bitmap.createBitmap(595, 842, Bitmap.Config.ARGB_8888)
                         try {
                             pointPage.render(preview, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
@@ -78,8 +85,17 @@ class PhotoAlbumGeneratorTest {
                         put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/PhotoCADVerification")
                     }
                     val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)!!
-                    context.contentResolver.openOutputStream(uri)!!.use { target ->
-                        output.file.inputStream().use { source -> source.copyTo(target) }
+                    ReportFileManager.save(context, output.file, uri)
+                    if (Build.VERSION.SDK_INT >= 35) {
+                        PdfRenderer(context.contentResolver.openFileDescriptor(uri, "r")!!).use { saved ->
+                            saved.openPage(2).use { page ->
+                                assertTrue(page.textContents.joinToString(" ") { it.text }.contains("Русское описание 1"))
+                            }
+                            saved.openPage(3).use { page ->
+                                assertTrue(page.textContents.joinToString(" ") { it.text }
+                                    .contains("Длинное описание выполненных работ"))
+                            }
+                        }
                     }
                 }
             } finally { output.file.delete() }

@@ -7,19 +7,20 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import com.example.photocad.ui.PhotoDescriptionEditor
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 
 class DescriptionEditorTest {
     @get:Rule val compose = createComposeRule()
-    @Test fun untouchedFieldFollowsTheStoredTextButDirtyTextSurvivesReloads() {
-        val saved = mutableStateOf<String?>("Сохранённое")
+    @Test fun fieldDisplaysAndUpdatesTheOwnersDraft() {
+        val draft = mutableStateOf("Сохранённое")
         compose.setContent { MaterialTheme {
-            PhotoDescriptionEditor(1, saved.value, false, onDraftChange = { })
+            PhotoDescriptionEditor(draft.value, false, onDraftChange = { draft.value = it })
         } }
         compose.onNodeWithText("Описание фотографии").assertTextContains("Сохранённое")
-        compose.runOnIdle { saved.value = "Обновлённое" }
+        compose.runOnIdle { draft.value = "Обновлённое" }
         compose.onNodeWithText("Описание фотографии").assertTextContains("Обновлённое")
         compose.onNodeWithText("Описание фотографии").performTextReplacement("Своя правка")
-        compose.runOnIdle { saved.value = "Ещё одно" }
+        compose.runOnIdle { assertEquals("Своя правка", draft.value) }
         compose.onNodeWithText("Описание фотографии").assertTextContains("Своя правка")
     }
 }

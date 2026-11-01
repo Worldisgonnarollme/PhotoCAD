@@ -83,15 +83,17 @@ fun DrawingScreen(db: AppDatabase, drawingId: Long, onBack: () -> Unit, onReport
     LaunchedEffect(drawingPath) {
         document = null
         openError = null
-        activePage = 1
         if (drawingPath != null) {
-            try { document = openDrawingDocument(drawingPath) }
+            try {
+                val opened = openDrawingDocument(drawingPath)
+                activePage = activePage.coerceIn(1, opened.pageCount)
+                document = opened
+            }
             catch (failure: Exception) { openError = "Не удалось открыть чертёж: ${failure.message}" }
         }
     }
 
     val pageCount = document?.pageCount ?: 1
-    LaunchedEffect(pageCount) { activePage = activePage.coerceIn(1, pageCount) }
     LaunchedEffect(activePage) { scale = 1f; pan = Offset.Zero; pageError = null }
     val pageSize = remember(document, activePage) {
         document?.let { reader -> runCatching { reader.pageSize(activePage) }.getOrNull() }
